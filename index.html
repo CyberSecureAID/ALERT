@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NASOC – NASA Network Operations Center</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Leaflet for world map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet ant path (animated dashes) -->
+  <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════ TOP HEADER ═══════════════════════ -->
+<header class="top-header">
+  <div class="header-brand">
+    <div class="nasa-logo">
+      <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="30" cy="30" r="28" fill="#0b3d91" stroke="#fc3d21" stroke-width="2"/>
+        <text x="30" y="22" text-anchor="middle" fill="white" font-size="10" font-family="Arial Black" font-weight="900">NASA</text>
+        <ellipse cx="30" cy="35" rx="18" ry="7" fill="none" stroke="white" stroke-width="1.5"/>
+        <line x1="8" y1="35" x2="52" y2="35" stroke="#fc3d21" stroke-width="1.5"/>
+        <circle cx="30" cy="35" r="3" fill="white"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <span class="brand-main">NASOC</span>
+      <span class="brand-sub">NASA NETWORK OPERATIONS CENTER</span>
+      <span class="brand-micro">GLOBAL NETWORK MONITORING SYSTEM</span>
+    </div>
+  </div>
+
+  <div class="header-meta">
+    <div class="meta-item">
+      <span class="meta-label">SYSTEM TIME (UTC)</span>
+      <span class="meta-value" id="sys-time">2025-05-24 14:32:18</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">STATUS <span class="blink-dot green">●</span></span>
+      <span class="meta-value green">OPERATIONAL</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">ALERT LEVEL</span>
+      <span class="meta-value yellow">ELEVATED</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">CURRENT USER</span>
+      <span class="meta-value">NSOC_ADMIN</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">SESSION ID</span>
+      <span class="meta-value">A7D9-3KLM-9Z2T</span>
+    </div>
+    <div class="header-avatar">
+      <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="15" stroke="#2a5298" stroke-width="1.5"/><circle cx="16" cy="13" r="5" fill="#2a5298"/><path d="M6 26c0-5.5 4.5-9 10-9s10 3.5 10 9" stroke="#2a5298" stroke-width="1.5" fill="none"/></svg>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════ MAIN LAYOUT ═══════════════════════ -->
+<div class="main-layout">
+
+  <!-- ───────── SIDEBAR ───────── -->
+  <nav class="sidebar">
+    <ul class="nav-list">
+      <li class="nav-item active">
+        <span class="nav-icon">⊞</span><span class="nav-label">DASHBOARD</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">🌐</span><span class="nav-label">NETWORK MAP</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">◈</span><span class="nav-label">ASSETS</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">📡</span><span class="nav-label">TELEMETRY</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">⚠</span><span class="nav-label">ALERTS</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">📊</span><span class="nav-label">PERFORMANCE</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">🛡</span><span class="nav-label">SECURITY</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">📋</span><span class="nav-label">LOGS</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">⚙</span><span class="nav-label">CONFIGURATION</span>
+      </li>
+      <li class="nav-item">
+        <span class="nav-icon">🖥</span><span class="nav-label">SYSTEM</span>
+      </li>
+    </ul>
+
+    <!-- System Health -->
+    <div class="system-health">
+      <div class="health-header">
+        <span>SYSTEM HEALTH</span><span class="chevron">›</span>
+      </div>
+      <div class="health-donut-wrap">
+        <canvas id="healthDonut" width="80" height="80"></canvas>
+        <div class="health-pct">
+          <span class="pct-num">92%</span>
+          <span class="pct-lbl">HEALTHY</span>
+        </div>
+      </div>
+      <ul class="health-list">
+        <li><span class="dot green"></span>NETWORK<span class="hval green">92%</span></li>
+        <li><span class="dot green"></span>SERVERS<span class="hval green">89%</span></li>
+        <li><span class="dot green"></span>LINKS<span class="hval green">94%</span></li>
+        <li><span class="dot green"></span>SECURITY<span class="hval green">91%</span></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ───────── CONTENT ───────── -->
+  <main class="content">
+
+    <!-- KPI Row -->
+    <section class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">TOTAL NODES <span class="kpi-arrow">›</span></div>
+        <div class="kpi-value">23,784</div>
+        <div class="kpi-trend green">+3.2% vs 24h</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">ACTIVE CONNECTIONS <span class="kpi-arrow">›</span></div>
+        <div class="kpi-value">12,641</div>
+        <div class="kpi-trend green">+5.7% vs 24h</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">NETWORK TRAFFIC</div>
+        <div class="kpi-value">2.841 <small>Tbps</small></div>
+        <div class="kpi-trend green">+12.4% vs 24h</div>
+        <canvas id="sparkline1" class="sparkline" width="80" height="28"></canvas>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">PACKET LOSS</div>
+        <div class="kpi-value">0.02<small>%</small></div>
+        <div class="kpi-trend red">-0.01% vs 24h</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">LATENCY (GLOBAL AVG)</div>
+        <div class="kpi-value">27.3 <small>ms</small></div>
+        <div class="kpi-trend green">-2.1 ms vs 24h</div>
+      </div>
+      <div class="kpi-card threat">
+        <div class="kpi-label">THREAT LEVEL</div>
+        <div class="kpi-value yellow">MEDIUM</div>
+        <div class="threat-bars" id="threatBars"></div>
+      </div>
+    </section>
+
+    <!-- Middle Row: Map + Alerts/Talkers/Links -->
+    <section class="mid-row">
+
+      <!-- Global Network Map -->
+      <div class="panel map-panel">
+        <div class="panel-header">
+          <span class="panel-title">GLOBAL NETWORK MAP</span>
+          <div class="map-legend">
+            <span class="legend-item"><span class="leg-dot green"></span>GROUND STATION</span>
+            <span class="legend-item"><span class="leg-dot blue"></span>DATA CENTER</span>
+            <span class="legend-item"><span class="leg-dot purple"></span>GATEWAY</span>
+            <span class="legend-item"><span class="leg-dot yellow"></span>SATELLITE LINK</span>
+          </div>
+        </div>
+        <div id="worldMap" class="world-map"></div>
+      </div>
+
+      <!-- Right column -->
+      <div class="right-col">
+
+        <!-- Active Alerts -->
+        <div class="panel alerts-panel">
+          <div class="panel-header">
+            <span class="panel-title">⚠ ACTIVE ALERTS</span>
+            <a class="view-all" href="#">VIEW ALL</a>
+          </div>
+          <div class="alert-item critical">
+            <div class="alert-badge">CRITICAL</div>
+            <div class="alert-body">
+              <div class="alert-title">Unusual Traffic Detected</div>
+              <div class="alert-meta">Node: JPL-GW-02</div>
+            </div>
+            <div class="alert-time">14:31 UTC</div>
+          </div>
+          <div class="alert-item high">
+            <div class="alert-badge">HIGH</div>
+            <div class="alert-body">
+              <div class="alert-title">Link Degradation</div>
+              <div class="alert-meta">Path: HOU → JPL</div>
+            </div>
+            <div class="alert-time">14:28 UTC</div>
+          </div>
+          <div class="alert-item medium">
+            <div class="alert-badge">MEDIUM</div>
+            <div class="alert-body">
+              <div class="alert-title">Authentication Failures</div>
+              <div class="alert-meta">Node: KSC-FW-01</div>
+            </div>
+            <div class="alert-time">14:21 UTC</div>
+          </div>
+          <div class="alert-item low">
+            <div class="alert-badge">LOW</div>
+            <div class="alert-body">
+              <div class="alert-title">Configuration Change</div>
+              <div class="alert-meta">Node: DSN-MAD-01</div>
+            </div>
+            <div class="alert-time">14:15 UTC</div>
+          </div>
+        </div>
+
+        <!-- Top Talkers -->
+        <div class="panel talkers-panel">
+          <div class="panel-header">
+            <span class="panel-title">TOP TALKERS</span>
+            <a class="view-all" href="#">VIEW ALL</a>
+          </div>
+          <div class="talker-row"><span class="talker-id">JPL-DATA-SRV-12</span><span class="talker-bw">1.23 Tbps</span><span class="talker-pct">12%</span></div>
+          <div class="talker-row"><span class="talker-id">SMD-IMG-PROXY-01</span><span class="talker-bw">985 Gbps</span><span class="talker-pct">9%</span></div>
+          <div class="talker-row"><span class="talker-id">DTN-NODE-05</span><span class="talker-bw">812 Gbps</span><span class="talker-pct">8%</span></div>
+          <div class="talker-row"><span class="talker-id">KSC-STREAM-02</span><span class="talker-bw">678 Gbps</span><span class="talker-pct">6%</span></div>
+          <div class="talker-row"><span class="talker-id">MSFC-SERVER-07</span><span class="talker-bw">512 Gbps</span><span class="talker-pct">5%</span></div>
+        </div>
+
+        <!-- Link Status -->
+        <div class="panel links-panel">
+          <div class="panel-header">
+            <span class="panel-title">LINK STATUS</span>
+            <a class="view-all" href="#">VIEW ALL</a>
+          </div>
+          <div class="link-row"><span class="link-path">HOU → JPL</span><span class="link-cap">10 Gbps</span><span class="link-lat green">18 ms</span></div>
+          <div class="link-row"><span class="link-path">JPL → DSN-MAD</span><span class="link-cap">10 Gbps</span><span class="link-lat yellow">47 ms</span></div>
+          <div class="link-row"><span class="link-path">KSC → MSFC</span><span class="link-cap">40 Gbps</span><span class="link-lat green">22 ms</span></div>
+          <div class="link-row"><span class="link-path">GRSC → JPL</span><span class="link-cap">10 Gbps</span><span class="link-lat green">19 ms</span></div>
+          <div class="link-row"><span class="link-path">SMD → KSC</span><span class="link-cap">10 Gbps</span><span class="link-lat yellow">31 ms</span></div>
+          <div class="link-row"><span class="link-path">ARC → DSN-CAN</span><span class="link-cap">10 Gbps</span><span class="link-lat red">63 ms</span></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Charts Row -->
+    <section class="charts-row">
+      <div class="panel chart-panel">
+        <div class="panel-header"><span class="panel-title">NETWORK TRAFFIC (24H)</span></div>
+        <canvas id="trafficChart" height="90"></canvas>
+      </div>
+      <div class="panel chart-panel latency-heatmap-panel">
+        <div class="panel-header"><span class="panel-title">LATENCY HEATMAP (MS)</span></div>
+        <div id="latencyHeatmap" class="heatmap-img-wrap">
+          <canvas id="latencyChart" height="90"></canvas>
+        </div>
+      </div>
+      <div class="panel chart-panel protocol-panel">
+        <div class="panel-header"><span class="panel-title">⟳ PROTOCOL DISTRIBUTION</span></div>
+        <div class="protocol-inner">
+          <canvas id="protocolDonut" width="120" height="120"></canvas>
+          <ul class="protocol-legend">
+            <li><span class="pl-dot" style="background:#3b82f6"></span>TCP<span class="pl-pct">58%</span></li>
+            <li><span class="pl-dot" style="background:#22d3ee"></span>UDP<span class="pl-pct">21%</span></li>
+            <li><span class="pl-dot" style="background:#f59e0b"></span>ICMP<span class="pl-pct">8%</span></li>
+            <li><span class="pl-dot" style="background:#10b981"></span>HTTPS<span class="pl-pct">7%</span></li>
+            <li><span class="pl-dot" style="background:#6366f1"></span>Other<span class="pl-pct">6%</span></li>
+          </ul>
+          <div class="protocol-total"><span>TOTAL</span><span class="pt-val">2.84 Tbps</span></div>
+        </div>
+      </div>
+      <div class="panel chart-panel">
+        <div class="panel-header"><span class="panel-title">● PACKET LOSS (24H)</span></div>
+        <canvas id="packetChart" height="90"></canvas>
+      </div>
+    </section>
+
+    <!-- Bottom Row: Events + Satellite Links -->
+    <section class="bottom-row">
+
+      <!-- Recent Events -->
+      <div class="panel events-panel">
+        <div class="panel-header"><span class="panel-title">RECENT EVENTS</span></div>
+        <table class="events-table">
+          <thead>
+            <tr>
+              <th>TIME (UTC)</th>
+              <th>SEVERITY <span>↕</span></th>
+              <th>EVENT</th>
+              <th>SOURCE</th>
+              <th>DETAILS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>14:31:45</td>
+              <td><span class="badge critical">CRITICAL</span></td>
+              <td>Unusual Traffic Detected</td>
+              <td>JPL-GW-02</td>
+              <td class="detail-col">Spike in outbound traffic to unknown IP range 185.***.***.**/16</td>
+            </tr>
+            <tr>
+              <td>14:28:11</td>
+              <td><span class="badge high">HIGH</span></td>
+              <td>Link Degradation</td>
+              <td>HOU → JPL</td>
+              <td class="detail-col">Increased latency and packet loss detected</td>
+            </tr>
+            <tr>
+              <td>14:21:07</td>
+              <td><span class="badge medium">MEDIUM</span></td>
+              <td>Authentication Failures</td>
+              <td>KSC-FW-01</td>
+              <td class="detail-col">Multiple failed login attempts detected</td>
+            </tr>
+            <tr>
+              <td>14:15:33</td>
+              <td><span class="badge low">LOW</span></td>
+              <td>Configuration Change</td>
+              <td>DSN-MAD-01</td>
+              <td class="detail-col">Routing table updated</td>
+            </tr>
+            <tr>
+              <td>14:10:22</td>
+              <td><span class="badge info">INFO</span></td>
+              <td>Backup Completed</td>
+              <td>MSFC-BKP-03</td>
+              <td class="detail-col">Scheduled backup completed successfully</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Satellite Links -->
+      <div class="panel satellite-panel">
+        <div class="panel-header"><span class="panel-title">✦ SATELLITE LINKS</span></div>
+        <div class="satellite-inner">
+          <div id="satViz" class="sat-viz"></div>
+          <ul class="sat-list">
+            <li><span class="sat-dot green"></span>TDRS-1<span class="sat-status green">STABLE</span></li>
+            <li><span class="sat-dot green"></span>TDRS-2<span class="sat-status green">STABLE</span></li>
+            <li><span class="sat-dot green"></span>TDRS-3<span class="sat-status green">STABLE</span></li>
+            <li><span class="sat-dot yellow"></span>TDRS-5<span class="sat-status yellow">MAINTENANCE</span></li>
+          </ul>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<script src="js/main.js"></script>
+</body>
+</html>
