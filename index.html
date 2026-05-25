@@ -21,10 +21,10 @@
   <div class="inet-alert-box">
     <div class="inet-icon">⚠</div>
     <div class="inet-title">FALLA DE CONEXIÓN DETECTADA</div>
-    <div class="inet-sub">Sin respuesta de Google — 2+ fallos consecutivos</div>
-    <div class="inet-detail" id="inet-detail">Último ping exitoso: <span id="last-ok-time">--</span></div>
+    <div class="inet-sub">Sin respuesta de Google — <span id="inet-fail-threshold">2</span>+ fallos consecutivos</div>
+    <div class="inet-detail">Último ping exitoso: <span id="last-ok-time">--</span></div>
     <div class="inet-actions">
-      <button id="inet-dismiss" onclick="dismissInetAlert()">RECONOCER</button>
+      <button id="inet-dismiss" onclick="dismissInetAlert()">RECONOCER ALERTA</button>
     </div>
     <div class="inet-ping-row">
       <span>ESTADO:</span>
@@ -140,6 +140,72 @@
   <!-- CONTENT -->
   <main class="content">
 
+    <!-- ══ MONITORING CONTROL BAR ══ -->
+    <section class="monitoring-bar animate-in" id="monitoringBar" style="--delay:0s">
+      <button class="mon-btn" id="monitorBtn" onclick="toggleMonitoring()">
+        <span class="mon-btn-icon">📡</span>
+        <span id="monitorBtnText">ACTIVAR MONITOREO DE RED</span>
+      </button>
+
+      <div class="mon-status-badge offline" id="monStatusBadge">
+        <span class="blink-dot red" id="monStatusDot">●</span>
+        <span id="monStatusLabel">INACTIVO</span>
+      </div>
+
+      <div class="mon-controls">
+        <!-- Volume -->
+        <div class="mon-ctrl-group">
+          <div class="mon-ctrl-label">VOLUMEN ALARMA</div>
+          <div class="mon-ctrl-row">
+            <span style="font-size:11px">🔈</span>
+            <input type="range" class="mon-slider" id="volumeSlider" min="0" max="100" value="80" oninput="updateVolume(this.value)">
+            <span class="mon-slider-val" id="volumeVal">80%</span>
+          </div>
+        </div>
+
+        <!-- Threshold -->
+        <div class="mon-ctrl-group">
+          <div class="mon-ctrl-label">FALLOS PARA ALARMA</div>
+          <div class="mon-ctrl-row">
+            <div class="mon-threshold-btns">
+              <button class="mon-threshold-btn" onclick="setThreshold(1)">1</button>
+              <button class="mon-threshold-btn active" id="thr-2" onclick="setThreshold(2)">2</button>
+              <button class="mon-threshold-btn" onclick="setThreshold(3)">3</button>
+              <button class="mon-threshold-btn" onclick="setThreshold(5)">5</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ping interval -->
+        <div class="mon-ctrl-group hide-sm">
+          <div class="mon-ctrl-label">INTERVALO PING</div>
+          <div class="mon-ctrl-row">
+            <div class="mon-threshold-btns">
+              <button class="mon-threshold-btn active" id="int-1" onclick="setPingInterval(1000)">1s</button>
+              <button class="mon-threshold-btn" onclick="setPingInterval(2000)">2s</button>
+              <button class="mon-threshold-btn" onclick="setPingInterval(5000)">5s</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live ping display -->
+      <div class="mon-ping-display">
+        <div>
+          <div class="mon-ping-label">PING GOOGLE</div>
+          <div class="mon-ping-val" id="monPingVal">-- ms</div>
+        </div>
+        <div>
+          <div class="mon-ping-label">FALLOS CONSEC.</div>
+          <div class="mon-ping-val mon-fail-count" id="monFailCount">0</div>
+        </div>
+        <div>
+          <div class="mon-ping-label">TOTAL PINGS</div>
+          <div class="mon-ping-val" id="monTotalPings" style="color:var(--accent-cyan)">0</div>
+        </div>
+      </div>
+    </section>
+
     <!-- KPI Row -->
     <section class="kpi-row">
       <div class="kpi-card animate-in" style="--delay:0.05s">
@@ -161,12 +227,12 @@
       <div class="kpi-card animate-in" style="--delay:0.2s">
         <div class="kpi-label">PACKET LOSS</div>
         <div class="kpi-value" id="kpi-loss">0.020<small>%</small></div>
-        <div class="kpi-trend red">-0.01% vs 24h</div>
+        <div class="kpi-trend red" id="kpi-loss-trend">-- vs 24h</div>
       </div>
       <div class="kpi-card animate-in" style="--delay:0.25s">
-        <div class="kpi-label">LATENCY (AVG)</div>
-        <div class="kpi-value" id="kpi-latency">27.3 <small>ms</small></div>
-        <div class="kpi-trend green">-2.1 ms vs 24h</div>
+        <div class="kpi-label">LATENCY GOOGLE (REAL)</div>
+        <div class="kpi-value" id="kpi-latency">-- <small>ms</small></div>
+        <div class="kpi-trend green" id="kpi-latency-trend">Midiendo...</div>
       </div>
       <div class="kpi-card animate-in" style="--delay:0.3s">
         <div class="kpi-label">THREAT LEVEL</div>
@@ -181,12 +247,12 @@
       <!-- Global Network Map -->
       <div class="panel map-panel">
         <div class="panel-header">
-          <span class="panel-title">GLOBAL NETWORK MAP</span>
+          <span class="panel-title">🌍 RED CUBA — GLOBAL NETWORK MAP</span>
           <div class="map-legend">
-            <span class="legend-item"><span class="leg-dot green"></span><span class="hide-sm">GROUND STATION</span></span>
-            <span class="legend-item"><span class="leg-dot blue"></span><span class="hide-sm">DATA CENTER</span></span>
-            <span class="legend-item"><span class="leg-dot purple"></span><span class="hide-sm">GATEWAY</span></span>
-            <span class="legend-item"><span class="leg-dot yellow"></span><span class="hide-sm">SAT LINK</span></span>
+            <span class="legend-item"><span class="leg-dot green"></span><span>GROUND STN</span></span>
+            <span class="legend-item"><span class="leg-dot blue"></span><span>DATA CTR</span></span>
+            <span class="legend-item"><span class="leg-dot purple"></span><span>GATEWAY</span></span>
+            <span class="legend-item"><span class="leg-dot yellow"></span><span>SAT LINK</span></span>
           </div>
         </div>
         <div id="worldMap" class="world-map"></div>
@@ -254,11 +320,11 @@
             <span class="panel-title">LINK STATUS</span>
             <a class="view-all" href="#">VIEW ALL</a>
           </div>
-          <div class="link-row"><span class="link-path">HOU → JPL</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat green" id="ll-1">18 ms</span></div>
-          <div class="link-row"><span class="link-path">JPL → DSN-MAD</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat yellow" id="ll-2">47 ms</span></div>
-          <div class="link-row"><span class="link-path">KSC → MSFC</span><span class="link-cap hide-sm">40 Gbps</span><span class="link-lat green" id="ll-3">22 ms</span></div>
-          <div class="link-row"><span class="link-path">GRSC → JPL</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat green" id="ll-4">19 ms</span></div>
-          <div class="link-row"><span class="link-path">SMD → KSC</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat yellow" id="ll-5">31 ms</span></div>
+          <div class="link-row"><span class="link-path">HABANA → MIAMI</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat green" id="ll-1">18 ms</span></div>
+          <div class="link-row"><span class="link-path">MIAMI → JPL</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat yellow" id="ll-2">47 ms</span></div>
+          <div class="link-row"><span class="link-path">HOLGUIN → CAMAGÜEY</span><span class="link-cap hide-sm">1 Gbps</span><span class="link-lat green" id="ll-3">12 ms</span></div>
+          <div class="link-row"><span class="link-path">KSC → MSFC</span><span class="link-cap hide-sm">40 Gbps</span><span class="link-lat green" id="ll-4">22 ms</span></div>
+          <div class="link-row"><span class="link-path">DSN-MAD → NEN</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat yellow" id="ll-5">61 ms</span></div>
           <div class="link-row"><span class="link-path">ARC → DSN-CAN</span><span class="link-cap hide-sm">10 Gbps</span><span class="link-lat red" id="ll-6">63 ms</span></div>
         </div>
 
@@ -278,7 +344,9 @@
       <div class="panel chart-panel protocol-panel">
         <div class="panel-header"><span class="panel-title">⟳ PROTOCOL DIST.</span></div>
         <div class="protocol-inner">
-          <canvas id="protocolDonut" width="110" height="110"></canvas>
+          <div class="protocol-donut-wrap">
+            <canvas id="protocolDonut" width="90" height="90"></canvas>
+          </div>
           <ul class="protocol-legend">
             <li><span class="pl-dot" style="background:#3b82f6"></span>TCP<span class="pl-pct">58%</span></li>
             <li><span class="pl-dot" style="background:#22d3ee"></span>UDP<span class="pl-pct">21%</span></li>
@@ -352,7 +420,7 @@
         </div>
       </div>
 
-      <!-- Satellite Links -->
+      <!-- Satellite Links — Larger -->
       <div class="panel satellite-panel">
         <div class="panel-header"><span class="panel-title">✦ SATELLITE LINKS</span></div>
         <div class="satellite-inner">
