@@ -4,6 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>NASOC – NASA Network Operations Center</title>
+
+  <!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  NASOC – REGISTRO DE CORRECCIONES                           ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  CORRECCIÓN 1 (APLICADA):                                   ║
+  ║  ► BARRA DE MONITOREO SIEMPRE VISIBLE                       ║
+  ║    CAUSA: el JS buscaba id="alerts-container" para          ║
+  ║    renderizar alertas reales, pero ese div NO existía en     ║
+  ║    el HTML. Al no encontrarlo, renderAlerts() fallaba        ║
+  ║    silenciosamente y el panel de alertas quedaba vacío,      ║
+  ║    dando la impresión de que "desaparecía" al activar.      ║
+  ║    FIX: se reemplazaron los 4 alert-item estáticos por      ║
+  ║    un <div id="alerts-container"></div> vacío que el JS      ║
+  ║    llena con alertas reales del sistema.                     ║
+  ║    ARCHIVO MODIFICADO: index.html (sección Active Alerts)   ║
+  ║                                                              ║
+  ║  PENDIENTES (próximas correcciones):                        ║
+  ║  ► 2. KPIs con datos reales (Total Nodes, Traffic, etc.)   ║
+  ║  ► 3. Nodos Cuba en el mapa (Camagüey ×3, Florida ×2…)     ║
+  ║  ► 4. Gráficas conectadas a datos reales                    ║
+  ║  ► 5. Sección Satellite con datos reales                    ║
+  ║  ► 6. Packet Loss 24H con datos reales                      ║
+  ║  ► 7. Reset Events funcional                                ║
+  ║  ► 8. Dashboard lateral (Next Map, Assets, Telemetrics…)    ║
+  ║  ► 9. Favicon NASA                                          ║
+  ╚══════════════════════════════════════════════════════════════╝
+  -->
+
   <link rel="stylesheet" href="css/style.css" />
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -140,7 +169,11 @@
   <!-- CONTENT -->
   <main class="content">
 
-    <!-- ══ MONITORING CONTROL BAR ══ -->
+    <!-- ══ MONITORING CONTROL BAR ══
+         NOTA: Esta sección es SIEMPRE VISIBLE.
+         El JS solo cambia clases CSS (active-monitoring / inactive)
+         pero NUNCA oculta ni destruye este elemento.
+    -->
     <section class="monitoring-bar animate-in" id="monitoringBar" style="--delay:0s">
       <button class="mon-btn" id="monitorBtn" onclick="toggleMonitoring()">
         <span class="mon-btn-icon">📡</span>
@@ -261,44 +294,24 @@
       <!-- Right column -->
       <div class="right-col">
 
-        <!-- Active Alerts -->
+        <!-- ══════════════════════════════════════════════
+             ACTIVE ALERTS
+             FIX APLICADO: se eliminaron los 4 alert-item
+             estáticos (hardcodeados) que existían antes.
+             Ahora hay un <div id="alerts-container"> vacío.
+             El JS (main.js → renderAlerts()) detecta este
+             contenedor y lo llena con alertas REALES del
+             sistema en tiempo real.
+             ANTES: el JS buscaba #alerts-container y al no
+             encontrarlo fallaba sin error → panel vacío.
+        ═══════════════════════════════════════════════ -->
         <div class="panel alerts-panel">
           <div class="panel-header">
             <span class="panel-title">⚠ ACTIVE ALERTS</span>
-            <a class="view-all" href="#">VIEW ALL</a>
+            <a class="view-all" href="#" onclick="event.preventDefault()">VIEW ALL</a>
           </div>
-          <div class="alert-item critical" id="alert-critical">
-            <div class="alert-badge">CRITICAL</div>
-            <div class="alert-body">
-              <div class="alert-title">Unusual Traffic Detected</div>
-              <div class="alert-meta">Node: JPL-GW-02</div>
-            </div>
-            <div class="alert-time" id="alert-time-1">--:-- UTC</div>
-          </div>
-          <div class="alert-item high">
-            <div class="alert-badge">HIGH</div>
-            <div class="alert-body">
-              <div class="alert-title">Link Degradation</div>
-              <div class="alert-meta">Path: HOU → JPL</div>
-            </div>
-            <div class="alert-time" id="alert-time-2">--:-- UTC</div>
-          </div>
-          <div class="alert-item medium">
-            <div class="alert-badge">MEDIUM</div>
-            <div class="alert-body">
-              <div class="alert-title">Auth Failures</div>
-              <div class="alert-meta">Node: KSC-FW-01</div>
-            </div>
-            <div class="alert-time" id="alert-time-3">--:-- UTC</div>
-          </div>
-          <div class="alert-item low">
-            <div class="alert-badge">LOW</div>
-            <div class="alert-body">
-              <div class="alert-title">Config Change</div>
-              <div class="alert-meta">Node: DSN-MAD-01</div>
-            </div>
-            <div class="alert-time" id="alert-time-4">--:-- UTC</div>
-          </div>
+          <!-- Contenedor dinámico — llenado por renderAlerts() en main.js -->
+          <div id="alerts-container"></div>
         </div>
 
         <!-- Top Talkers -->
@@ -380,47 +393,13 @@
               </tr>
             </thead>
             <tbody id="events-tbody">
-              <tr>
-                <td id="ev-t1">--:--:--</td>
-                <td><span class="badge critical">CRITICAL</span></td>
-                <td>Unusual Traffic</td>
-                <td class="hide-sm">JPL-GW-02</td>
-                <td class="detail-col hide-md">Spike outbound 185.***.***.**/16</td>
-              </tr>
-              <tr>
-                <td id="ev-t2">--:--:--</td>
-                <td><span class="badge high">HIGH</span></td>
-                <td>Link Degradation</td>
-                <td class="hide-sm">HOU → JPL</td>
-                <td class="detail-col hide-md">Increased latency + packet loss</td>
-              </tr>
-              <tr>
-                <td id="ev-t3">--:--:--</td>
-                <td><span class="badge medium">MEDIUM</span></td>
-                <td>Auth Failures</td>
-                <td class="hide-sm">KSC-FW-01</td>
-                <td class="detail-col hide-md">Multiple failed login attempts</td>
-              </tr>
-              <tr>
-                <td id="ev-t4">--:--:--</td>
-                <td><span class="badge low">LOW</span></td>
-                <td>Config Change</td>
-                <td class="hide-sm">DSN-MAD-01</td>
-                <td class="detail-col hide-md">Routing table updated</td>
-              </tr>
-              <tr>
-                <td id="ev-t5">--:--:--</td>
-                <td><span class="badge info">INFO</span></td>
-                <td>Backup Completed</td>
-                <td class="hide-sm">MSFC-BKP-03</td>
-                <td class="detail-col hide-md">Scheduled backup OK</td>
-              </tr>
+              <!-- Llenado dinámicamente por renderEventsTable() en main.js -->
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- Satellite Links — Larger -->
+      <!-- Satellite Links -->
       <div class="panel satellite-panel">
         <div class="panel-header"><span class="panel-title">✦ SATELLITE LINKS</span></div>
         <div class="satellite-inner">
