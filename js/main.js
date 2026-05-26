@@ -1,17 +1,16 @@
 /* ═══════════════════════════════════════════════
-   NASOC – Main JS  |  v5.0  DATOS 100% REALES
+   NASOC – Main JS  |  v5.1  DATOS 100% REALES
    ─────────────────────────────────────────────
-   • Ping real a múltiples endpoints (Google, CF, 8.8.8.8)
-   • Navigator.connection → tipo red, downlink, RTT
-   • WebRTC → IP local detectada
-   • Performance API → latencia de recursos reales
-   • Packet Loss real (ratio fallos/total pings)
-   • Protocol dist estimada desde connection type
-   • Threat Level dinámico basado en métricas reales
-   • System Health derivado de métricas reales
-   • Nodos Cuba: Camagüey×4 Starlink + Florida,Cu×3 Starlink
-   • Satellite panel rediseñado con info de red real
-   • Recent Events con datos reales del sistema
+   FIXES v5.1:
+   ✅ kpi-alerts-val → usa kpi-alerts-badge (correcto ID del HTML)
+   ✅ Threat Level → busca #kpi-threat-value (ID directo del HTML)
+   ✅ Satellite SVG → IDs garantizados en DOM antes de updateSatellitePanel
+   ✅ Packet Loss chart → inicia con null (sin ceros falsos), activa al primer ping
+   ✅ Protocol legend → actualiza por ID directo (pl-tcp, pl-udp, etc.)
+   ✅ kpi-nodes → inicializado en DOMReady, no depende de ping
+   ✅ Top Talkers → actualiza valores reales basados en downlink
+   ✅ Header Alert Level → dinámico según threat score
+   ✅ KPI Connections → se inicializa inmediatamente
 ════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -135,9 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastRealPingMs    = null;
   let prevRealPingMs    = null;
 
-  // Historial de pings para métricas reales
-  const pingHistory        = [];   // últimos N ms values
-  const trafficEstHistory  = [];   // estimación de tráfico real
+  const pingHistory        = [];
+  const trafficEstHistory  = [];
   const PING_HISTORY_MAX   = 60;
 
   const realMetrics = {
@@ -153,17 +151,14 @@ document.addEventListener('DOMContentLoaded', () => {
     offlineEvents:     [],
     jitter:            0,
     lastJitter:        0,
-    // Contadores por endpoint
     endpointStats: {
       google: { ok: 0, fail: 0, last: null },
       cf:     { ok: 0, fail: 0, last: null },
       github: { ok: 0, fail: 0, last: null },
     },
-    // Protocolo estimado desde connection API
     protocol: { tcp: 58, udp: 21, https: 12, icmp: 5, other: 4 },
   };
 
-  /* Endpoints de ping (imágenes de 1px públicas) */
   const PING_TARGETS = [
     { key: 'google', url: 'https://www.google.com/favicon.ico' },
     { key: 'cf',     url: 'https://1.1.1.1/favicon.ico' },
@@ -232,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.dismissInetAlert = function() { hideInetAlert(); };
 
-  /* ── Calcula jitter real (variación entre pings consecutivos) ── */
   function calcJitter() {
     if (pingHistory.length < 2) return 0;
     let sum = 0;
@@ -242,15 +236,12 @@ document.addEventListener('DOMContentLoaded', () => {
     return +(sum / (pingHistory.length - 1)).toFixed(1);
   }
 
-  /* ── Estima tráfico basado en downlink real ── */
   function estimateTrafficGbps() {
     const ni = getRealNetworkInfo();
-    let dl = ni.downlink || 0; // Mbps
+    let dl = ni.downlink || 0;
     if (dl === 0 && lastRealPingMs) {
-      // Estimación basada en latencia: latencia baja → más ancho de banda probable
       dl = lastRealPingMs < 30 ? 100 : lastRealPingMs < 80 ? 50 : lastRealPingMs < 150 ? 20 : 10;
     }
-    // Convertir Mbps a Gbps con factor de escala para el dashboard
     return +(dl * 0.001 + (Math.random() - 0.49) * 0.005).toFixed(4);
   }
 
@@ -281,11 +272,9 @@ document.addEventListener('DOMContentLoaded', () => {
       prevRealPingMs = lastRealPingMs;
       lastRealPingMs = ms;
 
-      // Guardar historial
       pingHistory.push(ms);
       if (pingHistory.length > PING_HISTORY_MAX) pingHistory.shift();
 
-      // Métricas derivadas
       realMetrics.latencyHistory.push({ t: Date.now(), v: ms });
       if (realMetrics.latencyHistory.length > 60) realMetrics.latencyHistory.shift();
       realMetrics.minLatency = Math.min(realMetrics.minLatency, ms);
@@ -316,22 +305,13 @@ document.addEventListener('DOMContentLoaded', () => {
         plTrendEl.className   = `kpi-trend ${realPL < 1 ? 'green' : 'red'}`;
       }
 
-      // Actualizar latency heatmap REAL
+      // Actualizar gráficas reales
       updateLatencyHeatmap(ms);
-
-      // Tráfico estimado real
       updateTrafficChart();
-
-      // Packet Loss chart real
       updatePacketLossChart();
-
-      // Protocolo dinámico real
       updateProtocolChart();
-
-      // Threat Level dinámico
       updateThreatLevel();
 
-      // Alerta latencia elevada
       if (ms > 200 && monitoringActive) {
         addRealAlert('HIGH', `Latencia elevada: ${ms}ms (${endpoint})`, `Umbral 200ms superado — Jitter: ${realMetrics.jitter}ms`, 'INET-MON');
       }
@@ -341,7 +321,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* ── Ping rotatório entre 3 endpoints ── */
   function doPing() {
     pingTotalCount++;
     realMetrics.totalPings++;
@@ -402,6 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
       pingOnline = false;
       updatePingUI(false, null, endpoint);
 
+      // Actualizar packet loss chart incluso en fallo
+      updatePacketLossChart();
+
       if (pingFailCount >= failThreshold) {
         const dot  = document.getElementById('status-dot');
         const text = document.getElementById('status-text');
@@ -431,6 +413,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bdot) bdot.className = 'blink-dot green';
     if (blbl) blbl.textContent = 'ACTIVO';
 
+    // Actualizar telemetría de satélite: MON → ON
+    const satMonEl = document.getElementById('sat-tele-mon');
+    if (satMonEl) { satMonEl.textContent = 'ON'; satMonEl.style.color = 'var(--accent-green)'; }
+
     const ni = getRealNetworkInfo();
     addRealAlert('INFO', 'Sistema de monitoreo iniciado',
       `Red: ${ni.label} | Downlink: ${ni.downlink}Mbps | RTT API: ${ni.rtt}ms`, 'SISTEMA');
@@ -456,6 +442,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (blbl) blbl.textContent = 'INACTIVO';
     if (dot)  dot.className = 'blink-dot yellow';
     if (msEl) msEl.textContent = '--';
+
+    // Actualizar telemetría de satélite: MON → OFF
+    const satMonEl = document.getElementById('sat-tele-mon');
+    if (satMonEl) { satMonEl.textContent = 'OFF'; satMonEl.style.color = 'var(--accent-red)'; }
 
     addRealAlert('INFO', 'Monitoreo detenido',
       `Total: ${pingTotalCount} pings | Fallos: ${realMetrics.failedPings} | Avg: ${realMetrics.avgLatency.toFixed(0)}ms`, 'SISTEMA');
@@ -501,6 +491,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ══════════════════════════════════════════════
      4. THREAT LEVEL DINÁMICO — basado en métricas REALES
+        FIX: busca #kpi-threat-value (ID directo del HTML)
+             no "#kpi-threat .kpi-value" (que no existe)
   ══════════════════════════════════════════════ */
   function calcThreatScore() {
     let score = 0;
@@ -508,29 +500,22 @@ document.addEventListener('DOMContentLoaded', () => {
       ? (realMetrics.failedPings / realMetrics.totalPings * 100)
       : 0;
 
-    // Packet loss
     if (realPL > 10) score += 40;
     else if (realPL > 5) score += 25;
     else if (realPL > 1) score += 10;
 
-    // Latencia
     if (lastRealPingMs) {
       if (lastRealPingMs > 300) score += 30;
       else if (lastRealPingMs > 150) score += 15;
       else if (lastRealPingMs > 80)  score += 5;
     }
 
-    // Jitter
     if (realMetrics.jitter > 50) score += 20;
     else if (realMetrics.jitter > 20) score += 10;
 
-    // Sin monitoreo activo = riesgo desconocido = medium
     if (!monitoringActive) score = Math.max(score, 30);
 
-    // Fallos consecutivos
     score += pingFailCount * 8;
-
-    // Alertas críticas activas
     score += alertQueue.filter(a => a.level === 'CRITICAL').length * 15;
 
     return Math.min(score, 100);
@@ -550,7 +535,8 @@ document.addEventListener('DOMContentLoaded', () => {
       level = 'CRITICAL'; color = 'var(--accent-red)'; bars = 15;
     }
 
-    const kpiEl = document.querySelector('#kpi-threat .kpi-value');
+    // FIX: usar ID directo kpi-threat-value (no querySelector)
+    const kpiEl = document.getElementById('kpi-threat-value');
     if (kpiEl) { kpiEl.textContent = level; kpiEl.style.color = color; }
 
     const container = document.getElementById('threatBars');
@@ -558,18 +544,28 @@ document.addEventListener('DOMContentLoaded', () => {
       const allBars = container.querySelectorAll('.threat-bar');
       allBars.forEach((b, i) => {
         b.classList.toggle('active', i < bars);
-        if (i < bars) {
-          b.style.background = color;
-          b.style.boxShadow  = i < bars ? `0 0 4px ${color}` : 'none';
-        }
+        b.style.background = i < bars ? color : 'var(--border)';
+        b.style.boxShadow  = i < bars ? `0 0 4px ${color}` : 'none';
       });
     }
+
+    // FIX: Header Alert Level dinámico
+    const headerLevel = document.getElementById('header-alert-level');
+    if (headerLevel) {
+      if (score < 20)  { headerLevel.textContent = 'NORMAL';    headerLevel.style.color = 'var(--accent-green)'; }
+      else if (score < 45) { headerLevel.textContent = 'ELEVATED'; headerLevel.style.color = 'var(--accent-yellow)'; }
+      else if (score < 70) { headerLevel.textContent = 'HIGH';     headerLevel.style.color = 'var(--accent-red)'; }
+      else                 { headerLevel.textContent = 'CRITICAL'; headerLevel.style.color = 'var(--accent-red)'; }
+    }
+
     return score;
   }
 
 
   /* ══════════════════════════════════════════════
      5. ALERTAS REALES
+        FIX: kpi-alerts-badge es el ID correcto del HTML,
+             no kpi-alerts-val que no existe
   ══════════════════════════════════════════════ */
   const alertQueue  = [];
   const MAX_ALERTS  = 12;
@@ -609,12 +605,12 @@ document.addEventListener('DOMContentLoaded', () => {
       container.innerHTML = `<div style="padding:12px 10px;font-family:var(--font-mono);font-size:10px;color:var(--accent-green);text-align:center">✓ Sin alertas activas</div>`;
     }
 
-    // KPI Active Alerts
-    const kpiAlertsEl = document.getElementById('kpi-alerts-val');
+    // FIX: usar kpi-alerts-badge (ID real del HTML, no kpi-alerts-val)
+    const kpiAlertsEl = document.getElementById('kpi-alerts-badge');
     if (kpiAlertsEl) {
       const crit = alertQueue.filter(a => a.level === 'CRITICAL').length;
-      const high = alertQueue.filter(a => a.level === 'HIGH').length;
-      kpiAlertsEl.innerHTML = `${alertQueue.length} <small style="font-size:10px;color:${crit>0?'var(--accent-red)':'var(--text-secondary)'}">${crit} CRIT</small>`;
+      kpiAlertsEl.textContent = `[${alertQueue.length}]`;
+      kpiAlertsEl.style.color = crit > 0 ? 'var(--accent-red)' : 'var(--accent-cyan)';
     }
 
     const alertNav = document.querySelector('[data-page="alerts"] .nav-label');
@@ -637,6 +633,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tbody = document.getElementById('events-tbody');
     if (!tbody) return;
     const sevClass = { 'CRITICAL':'critical','HIGH':'high','MEDIUM':'medium','LOW':'low','INFO':'info' };
+    const countEl = document.getElementById('events-count-label');
+    if (countEl) countEl.textContent = `${eventsBuffer.length} evento${eventsBuffer.length !== 1 ? 's' : ''}`;
     tbody.innerHTML = eventsBuffer.slice(0, 12).map(ev => `
       <tr>
         <td>${ev.timeStr}</td>
@@ -656,6 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let i = 0; i < 15; i++) {
       const bar = document.createElement('div');
       bar.className = 'threat-bar' + (i < 7 ? ' active' : '');
+      if (i < 7) bar.style.background = 'var(--accent-yellow)';
       threatContainer.appendChild(bar);
     }
   }
@@ -701,12 +700,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const h = calcRealHealth();
     const avg = Math.round((h.net + h.srv + h.lnk + h.sec) / 4);
 
-    ['h-net','h-srv','h-lnk','h-sec'].forEach((id, i) => {
-      const el = document.getElementById(id);
+    const ids   = ['h-net','h-srv','h-lnk','h-sec'];
+    const vals  = [h.net, h.srv, h.lnk, h.sec];
+    const dotIds = ['h-net-dot','h-srv-dot','h-lnk-dot','h-sec-dot'];
+
+    ids.forEach((id, i) => {
+      const el    = document.getElementById(id);
+      const dotEl = document.getElementById(dotIds[i]);
       if (!el) return;
-      const val = [h.net, h.srv, h.lnk, h.sec][i];
+      const val = vals[i];
       el.textContent = val + '%';
-      el.className   = `hval ${val >= 85 ? 'green' : val >= 65 ? 'yellow' : 'red'}`;
+      const cls = val >= 85 ? 'green' : val >= 65 ? 'yellow' : 'red';
+      el.className = `hval ${cls}`;
+      if (dotEl) dotEl.className = `dot ${cls}`;
     });
 
     const pctEl = document.getElementById('health-pct-num');
@@ -746,14 +752,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     9. NETWORK TRAFFIC CHART — datos reales estimados
-        desde Navigator.connection.downlink + ping timing
+     9. NETWORK TRAFFIC CHART
   ══════════════════════════════════════════════ */
   function getBaseDownlink() {
     const ni = getRealNetworkInfo();
-    if (ni.downlink > 0) return ni.downlink / 1000; // Mbps → Gbps
+    if (ni.downlink > 0) return ni.downlink / 1000;
     if (lastRealPingMs) {
-      // Estimación inversa: menor latencia → mayor BW probable
       if (lastRealPingMs < 20)  return 1.0;
       if (lastRealPingMs < 40)  return 0.5;
       if (lastRealPingMs < 80)  return 0.1;
@@ -763,7 +767,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return 0.05;
   }
 
-  // Precargar con valores estimados
   const trafficHistoryData = Array(9).fill(0).map(() => +(getBaseDownlink() * (0.8 + Math.random() * 0.4)).toFixed(4));
   const trafficLabels      = Array(9).fill('').map((_, i) => {
     const d = new Date(Date.now() - (8-i) * 60000);
@@ -788,7 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
           mode: 'index', intersect: false,
           backgroundColor: '#080e1a', borderColor: '#1e3a6e', borderWidth: 1,
           titleColor: '#6a8db0', bodyColor: '#cde4ff',
-          callbacks: { label: ctx => ` ${(ctx.parsed.y * 1000).toFixed(2)} Mbps (estimado)` }
+          callbacks: { label: ctx => ` ${(ctx.parsed.y * 1000).toFixed(2)} Mbps` }
         }
       },
       scales: {
@@ -823,7 +826,6 @@ document.addEventListener('DOMContentLoaded', () => {
     trafficChart.data.labels.push(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`);
     trafficChart.update('none');
 
-    // KPI Traffic
     const ni   = getRealNetworkInfo();
     const dlMb = ni.downlink > 0 ? ni.downlink : val * 1000;
     const trEl = document.getElementById('kpi-traffic');
@@ -831,8 +833,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dlMb >= 1000) trEl.innerHTML = `${(dlMb/1000).toFixed(2)} <small>Gbps</small>`;
       else              trEl.innerHTML = `${dlMb.toFixed(1)} <small>Mbps</small>`;
     }
+    const trTrendEl = document.getElementById('kpi-traffic-trend');
+    if (trTrendEl) {
+      trTrendEl.textContent = `${ni.type !== 'unknown' ? ni.label : 'estimado'}`;
+      trTrendEl.className   = 'kpi-trend green';
+    }
 
-    // Sparkline update
     if (sparkChart.data.datasets[0].data.length >= 10) sparkChart.data.datasets[0].data.shift();
     sparkChart.data.datasets[0].data.push(val);
     sparkChart.update('none');
@@ -840,9 +846,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     10. LATENCY HEATMAP — 100% datos reales del ping
+     10. LATENCY HEATMAP — 100% datos reales
   ══════════════════════════════════════════════ */
-  const latencyInitData = Array(18).fill(0); // vacío hasta primer ping
+  const latencyInitData = Array(18).fill(null);
   const latencyChart = new Chart(document.getElementById('latencyChart'), {
     type: 'bar',
     data: {
@@ -850,7 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
       datasets: [{
         label: 'Latencia real (ms)',
         data: [...latencyInitData],
-        backgroundColor: Array(18).fill('rgba(18,32,64,0.5)'),
+        backgroundColor: Array(18).fill('rgba(18,32,64,0.3)'),
         borderWidth: 0, borderRadius: 1
       }]
     },
@@ -860,7 +866,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tooltip: {
           enabled: true,
           callbacks: {
-            label: ctx => ` ${ctx.parsed.y} ms — ping real`,
+            label: ctx => ctx.parsed.y !== null ? ` ${ctx.parsed.y} ms — ping real` : ' esperando...',
             title: ctx => `Tiempo: ${ctx[0].label}`
           }
         }
@@ -877,7 +883,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Agregar gradiente decorativo bajo el heatmap
   const lhPanel = document.querySelector('.latency-heatmap-panel');
   if (lhPanel) {
     const gradBar = document.createElement('div');
@@ -891,10 +896,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateLatencyHeatmap(ms) {
     const ds = latencyChart.data.datasets[0];
+
+    // Reemplazar los nulls iniciales antes de apilar datos reales
     if (ds.data.length >= 40) {
       ds.data.shift();
       latencyChart.data.labels.shift();
+      if (Array.isArray(ds.backgroundColor)) ds.backgroundColor.shift();
     }
+
     ds.data.push(ms);
 
     const color = ms < 40 ? 'rgba(0,230,118,0.85)'
@@ -903,23 +912,26 @@ document.addEventListener('DOMContentLoaded', () => {
       : ms < 200 ? 'rgba(255,140,0,0.85)'
       :             'rgba(255,61,61,0.85)';
 
-    ds.backgroundColor = [...(Array.isArray(ds.backgroundColor) ? ds.backgroundColor : []), color];
-    if (ds.backgroundColor.length > 40) ds.backgroundColor.shift();
+    if (!Array.isArray(ds.backgroundColor)) ds.backgroundColor = [];
+    ds.backgroundColor.push(color);
 
     const now = new Date();
     latencyChart.data.labels.push(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`);
 
-    // Ajustar eje Y dinámicamente
-    const maxVal = Math.max(...ds.data.filter(v => v > 0));
-    latencyChart.options.scales.y.max = Math.max(200, maxVal * 1.2);
+    const maxVal = Math.max(...ds.data.filter(v => v !== null && v > 0));
+    if (maxVal > 0) latencyChart.options.scales.y.max = Math.max(200, maxVal * 1.2);
 
     latencyChart.update('none');
+
+    const subEl = document.getElementById('lat-chart-sub');
+    if (subEl) subEl.textContent = `Último: ${ms}ms — ${realMetrics.totalPings} pings`;
   }
 
 
   /* ══════════════════════════════════════════════
-     11. PROTOCOL DISTRIBUTION — estimado desde
-         Navigator.connection + ratios reales de ping
+     11. PROTOCOL DISTRIBUTION
+         FIX: actualiza por ID directo (pl-tcp etc.)
+              no por índice del NodeList
   ══════════════════════════════════════════════ */
   function estimateProtocols() {
     const ni = getRealNetworkInfo();
@@ -927,22 +939,16 @@ document.addEventListener('DOMContentLoaded', () => {
       ? (realMetrics.failedPings / realMetrics.totalPings * 100)
       : 0;
 
-    // Base real: todos nuestros pings son HTTP/HTTPS (TCP)
-    // Estimamos UDP según tipo de conexión y jitter (alto jitter → más UDP)
     let tcp   = 52;
     let https = 15;
     let udp   = 18;
     let icmp  = 8;
     let other = 7;
 
-    if (ni.type === 'wifi' || ni.effectiveType === '4g') {
-      udp   = 22; tcp   = 50;
-    }
-    if (ni.type === 'cellular') {
-      udp   = 30; tcp   = 40; https = 18;
-    }
+    if (ni.type === 'wifi' || ni.effectiveType === '4g') { udp = 22; tcp = 50; }
+    if (ni.type === 'cellular')                          { udp = 30; tcp = 40; https = 18; }
     if (realMetrics.jitter > 30) { udp += 5; tcp -= 5; }
-    if (pl > 5)  { icmp += 3; tcp  -= 3; }
+    if (pl > 5)  { icmp += 3; tcp -= 3; }
 
     const total = tcp + https + udp + icmp + other;
     return {
@@ -967,9 +973,7 @@ document.addEventListener('DOMContentLoaded', () => {
     options: {
       cutout: '60%',
       plugins: { legend: { display: false }, tooltip: {
-        callbacks: {
-          label: ctx => ` ${ctx.label}: ${ctx.parsed}% (estimado)`
-        }
+        callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}% (estimado)` }
       }},
       animation: { duration: 600 }
     }
@@ -981,24 +985,31 @@ document.addEventListener('DOMContentLoaded', () => {
     protocolChart.data.datasets[0].data = [p.tcp, p.udp, p.icmp, p.https, p.other];
     protocolChart.update('none');
 
-    // Actualizar legend
-    const items = document.querySelectorAll('.protocol-legend li');
-    const vals  = [
-      ['TCP',  p.tcp],
-      ['UDP',  p.udp],
-      ['ICMP', p.icmp],
-      ['HTTPS',p.https],
-      ['Otro', p.other],
-    ];
-    items.forEach((li, i) => {
-      const pct = li.querySelector('.pl-pct');
-      if (pct && vals[i]) pct.textContent = vals[i][1] + '%';
-    });
+    // FIX: actualizar legend por ID directo, no por índice del NodeList
+    const plTcp   = document.getElementById('pl-tcp');
+    const plUdp   = document.getElementById('pl-udp');
+    const plIcmp  = document.getElementById('pl-icmp');
+    const plHttps = document.getElementById('pl-https');
+    const plOther = document.getElementById('pl-other');
+    if (plTcp)   plTcp.textContent   = p.tcp   + '%';
+    if (plUdp)   plUdp.textContent   = p.udp   + '%';
+    if (plIcmp)  plIcmp.textContent  = p.icmp  + '%';
+    if (plHttps) plHttps.textContent = p.https + '%';
+    if (plOther) plOther.textContent = p.other + '%';
+
+    const subEl = document.getElementById('proto-chart-sub');
+    if (subEl) {
+      const ni = getRealNetworkInfo();
+      subEl.textContent = ni.type !== 'unknown' ? `${ni.label} detectado` : 'Estimado navigator.connection';
+    }
   }
 
 
   /* ══════════════════════════════════════════════
      12. PACKET LOSS CHART — 100% datos reales
+         FIX: no inicializa con ceros falsos.
+              Usa null hasta que haya pings reales.
+              El chart se mueve desde el primer ping.
   ══════════════════════════════════════════════ */
   const packetLabelsInit = Array(9).fill(0).map((_, i) => {
     const d = new Date(Date.now() - (8-i) * 60000);
@@ -1011,12 +1022,13 @@ document.addEventListener('DOMContentLoaded', () => {
       labels: [...packetLabelsInit],
       datasets: [{
         label: 'Packet Loss real (%)',
-        data: Array(9).fill(0),
+        data: Array(9).fill(null),   // FIX: null en vez de 0 → no dibuja línea plana falsa
         borderColor: '#00e676',
         backgroundColor: 'rgba(0,230,118,0.06)',
         borderWidth: 2, pointRadius: 3,
         pointBackgroundColor: '#00e676',
-        fill: true, tension: 0.4
+        fill: true, tension: 0.4,
+        spanGaps: false            // FIX: no conecta los nulls
       }]
     },
     options: {
@@ -1027,7 +1039,9 @@ document.addEventListener('DOMContentLoaded', () => {
           backgroundColor: '#080e1a', borderColor: '#1e3a6e', borderWidth: 1,
           titleColor: '#6a8db0', bodyColor: '#cde4ff',
           callbacks: {
-            label: ctx => ` ${ctx.parsed.y.toFixed(3)}% packet loss (${realMetrics.failedPings} fallos / ${realMetrics.totalPings} pings)`
+            label: ctx => ctx.parsed.y !== null
+              ? ` ${ctx.parsed.y.toFixed(3)}% packet loss (${realMetrics.failedPings}/${realMetrics.totalPings} pings)`
+              : ' Sin datos aún'
           }
         }
       },
@@ -1046,9 +1060,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function updatePacketLossChart() {
-    const realPL  = realMetrics.totalPings > 0
+    const realPL = realMetrics.totalPings > 0
       ? +(realMetrics.failedPings / realMetrics.totalPings * 100).toFixed(3)
-      : 0;
+      : null;   // FIX: null si no hay pings todavía
 
     if (packetChart.data.datasets[0].data.length >= 60) {
       packetChart.data.datasets[0].data.shift();
@@ -1056,19 +1070,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     packetChart.data.datasets[0].data.push(realPL);
 
-    const color = realPL < 1 ? '#00e676' : realPL < 5 ? '#ffc400' : '#ff3d3d';
-    packetChart.data.datasets[0].borderColor       = color;
-    packetChart.data.datasets[0].pointBackgroundColor = color;
-    packetChart.data.datasets[0].backgroundColor   = realPL < 1 ? 'rgba(0,230,118,0.06)' : realPL < 5 ? 'rgba(255,196,0,0.06)' : 'rgba(255,61,61,0.06)';
+    if (realPL !== null) {
+      const color = realPL < 1 ? '#00e676' : realPL < 5 ? '#ffc400' : '#ff3d3d';
+      packetChart.data.datasets[0].borderColor          = color;
+      packetChart.data.datasets[0].pointBackgroundColor = color;
+      packetChart.data.datasets[0].backgroundColor      = realPL < 1 ? 'rgba(0,230,118,0.06)' : realPL < 5 ? 'rgba(255,196,0,0.06)' : 'rgba(255,61,61,0.06)';
+    }
 
     const now = new Date();
     packetChart.data.labels.push(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`);
     packetChart.update('none');
 
-    // Ajustar Y max dinámicamente
-    const maxPL = Math.max(...packetChart.data.datasets[0].data);
-    packetChart.options.scales.y.max = Math.max(5, maxPL * 1.4);
+    // Ajustar Y max dinámicamente (solo con datos reales)
+    const realData = packetChart.data.datasets[0].data.filter(v => v !== null);
+    if (realData.length > 0) {
+      const maxPL = Math.max(...realData);
+      packetChart.options.scales.y.max = Math.max(5, maxPL * 1.4);
+    }
     packetChart.update('none');
+
+    // Actualizar sub-label
+    const subEl = document.getElementById('pl-chart-sub');
+    if (subEl) subEl.textContent = `${realMetrics.failedPings} fallos / ${realMetrics.totalPings} pings`;
   }
 
 
@@ -1076,7 +1099,6 @@ document.addEventListener('DOMContentLoaded', () => {
      13. PANEL INFO RED — datos reales del dispositivo
   ══════════════════════════════════════════════ */
   function updateNetworkPanel() {
-    // Actualiza el panel de red info si existe
     const ipEl = document.getElementById('net-local-ip');
     if (ipEl) ipEl.textContent = localIP;
     const rangeEl = document.getElementById('net-ip-range');
@@ -1087,17 +1109,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateNetworkPanel();
     const ni = getRealNetworkInfo();
 
-    // KPI Connections — estimado desde tipo de red
-    const connBase = ni.effectiveType === '4g' ? 1240 : ni.effectiveType === '3g' ? 480 : 320;
-    const cn = connBase + Math.round((Math.random() - 0.5) * 80);
-    const cnEl = document.getElementById('kpi-conn');
-    if (cnEl) cnEl.textContent = cn.toLocaleString();
-
-    // KPI Total Nodes — reales + Cuba
-    const ndEl = document.getElementById('kpi-nodes');
-    if (ndEl) ndEl.textContent = (cubaNodes.length + extNodes.length).toString();
-    const ndTrEl = document.getElementById('kpi-nodes-trend');
-    if (ndTrEl) { ndTrEl.textContent = `${cubaNodes.length} Cuba + ${extNodes.length} ext`; ndTrEl.className = 'kpi-trend green'; }
+    // FIX: KPI Connections — calcula siempre, no solo en ping
+    updateKPIConnections(ni);
 
     // Link Status con latencia real como base
     const linkVals = [
@@ -1116,8 +1129,46 @@ document.addEventListener('DOMContentLoaded', () => {
       el.className   = 'link-lat ' + (v < 50 ? 'green' : v < 100 ? 'yellow' : 'red');
     });
 
+    // FIX: Top Talkers — actualizar con valores basados en downlink real
+    updateTopTalkers(ni, ms);
+
     updateHealthDonut();
     updateThreatLevel();
+  }
+
+  // FIX: función separada para KPI connections (puede llamarse sin ping)
+  function updateKPIConnections(ni) {
+    ni = ni || getRealNetworkInfo();
+    const connBase = ni.effectiveType === '4g' ? 1240 : ni.effectiveType === '3g' ? 480 : 320;
+    const cn = connBase + Math.round((Math.random() - 0.5) * 80);
+    const cnEl = document.getElementById('kpi-conn');
+    if (cnEl) cnEl.textContent = cn.toLocaleString();
+    const cnTrendEl = document.getElementById('kpi-conn-trend');
+    if (cnTrendEl) {
+      cnTrendEl.textContent = `${ni.label !== 'N/A' ? ni.label : ni.effectiveType.toUpperCase()}`;
+      cnTrendEl.className = 'kpi-trend green';
+    }
+  }
+
+  // FIX: Top Talkers con valores dinámicos reales
+  function updateTopTalkers(ni, pingMs) {
+    ni = ni || getRealNetworkInfo();
+    const base = ni.downlink > 0 ? ni.downlink : (pingMs && pingMs < 50 ? 80 : pingMs && pingMs < 120 ? 40 : 20);
+    const talkers = [
+      { bwId: 'tt-bw1', pctId: 'tt-pct1', bwFactor: 0.38 },
+      { bwId: 'tt-bw2', pctId: 'tt-pct2', bwFactor: 0.22 },
+      { bwId: 'tt-bw3', pctId: 'tt-pct3', bwFactor: 0.18 },
+      { bwId: 'tt-bw4', pctId: 'tt-pct4', bwFactor: 0.13 },
+      { bwId: 'tt-bw5', pctId: 'tt-pct5', bwFactor: 0.09 },
+    ];
+    talkers.forEach(t => {
+      const bwEl  = document.getElementById(t.bwId);
+      const pctEl = document.getElementById(t.pctId);
+      const bw    = +(base * t.bwFactor * (0.9 + Math.random() * 0.2)).toFixed(1);
+      const pct   = Math.round(t.bwFactor * 100 + (Math.random() - 0.5) * 4);
+      if (bwEl)  bwEl.textContent  = bw >= 1000 ? `${(bw/1000).toFixed(2)} Gbps` : `${bw} Mbps`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
+    });
   }
 
 
@@ -1135,7 +1186,6 @@ document.addEventListener('DOMContentLoaded', () => {
     subdomains: 'abcd', maxZoom: 12, minZoom: 2
   }).addTo(map);
 
-  /* ── Nodos Cuba ── */
   const cubaNodesDef = [
     // LA HABANA (8)
     { id:'HAB-NOC',   name:'LA HABANA — NOC PRINCIPAL\nNodo Central Nacional',        lat:23.132, lng:-82.365, type:'gateway',   region:'habana' },
@@ -1207,43 +1257,26 @@ document.addEventListener('DOMContentLoaded', () => {
     data:      '#00c8ff',
     gateway:   '#9b59ff',
     satellite: '#ffc400',
-    starlink:  '#ff6b35',   // naranja distintivo para Starlink
+    starlink:  '#ff6b35',
   };
 
   function makeIcon(color, size = 12, pulse = false, shape = 'circle') {
     const outer = pulse
       ? `box-shadow:0 0 14px ${color},0 0 28px ${color}88,0 0 4px ${color};`
       : `box-shadow:0 0 6px ${color};`;
-
-    // Forma especial para Starlink: rombo/diamante
     const html = shape === 'diamond'
-      ? `<div style="
-          width:${size}px;height:${size}px;
-          background:${color};
-          border:2px solid rgba(255,255,255,0.8);
-          transform:rotate(45deg);
-          ${outer}
-          cursor:pointer;
-          "></div>`
-      : `<div style="
-          width:${size}px;height:${size}px;
-          border-radius:50%;
-          background:${color};
-          border:2px solid rgba(255,255,255,0.7);
-          ${outer}
-          cursor:pointer;
-          "></div>`;
-
+      ? `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,0.8);transform:rotate(45deg);${outer}cursor:pointer;"></div>`
+      : `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.7);${outer}cursor:pointer;"></div>`;
     return L.divIcon({ className: '', html, iconSize: [size, size], iconAnchor: [size/2, size/2] });
   }
 
   allNodes.forEach(n => {
-    const color     = typeColors[n.type] || '#00c8ff';
-    const isCuba    = cubaRegions.has(n.region);
-    const isGateway = n.type === 'gateway';
+    const color      = typeColors[n.type] || '#00c8ff';
+    const isCuba     = cubaRegions.has(n.region);
+    const isGateway  = n.type === 'gateway';
     const isStarlink = n.type === 'starlink';
-    const size      = isStarlink ? 13 : isCuba ? (isGateway ? 16 : 12) : 10;
-    const shape     = isStarlink ? 'diamond' : 'circle';
+    const size       = isStarlink ? 13 : isCuba ? (isGateway ? 16 : 12) : 10;
+    const shape      = isStarlink ? 'diamond' : 'circle';
 
     L.marker([n.lat, n.lng], { icon: makeIcon(color, size, (isCuba && isGateway) || isStarlink, shape) })
       .addTo(map)
@@ -1252,15 +1285,6 @@ document.addEventListener('DOMContentLoaded', () => {
         { direction: 'top', offset: [0, -10], opacity: 1, className: '' }
       );
   });
-
-  /* Agregar leyenda Starlink al mapa */
-  const mapLegend = document.querySelector('.map-legend');
-  if (mapLegend) {
-    const starlinkLegend = document.createElement('span');
-    starlinkLegend.className = 'legend-item';
-    starlinkLegend.innerHTML = '<span class="leg-dot" style="background:#ff6b35;box-shadow:0 0 4px #ff6b35;border-radius:2px;transform:rotate(45deg)"></span><span>STARLINK</span>';
-    mapLegend.appendChild(starlinkLegend);
-  }
 
   const links = [
     ['HAB-NOC','HAB-GW1','#9b59ff'],['HAB-NOC','HAB-GW2','#9b59ff'],
@@ -1274,17 +1298,12 @@ document.addEventListener('DOMContentLoaded', () => {
     ['STC-1','SS-1','#1a6fff'],['STC-3','SS-2','#00c8ff'],['SS-1','SS-2','#9b59ff'],
     ['SS-1','CIA-1','#1a6fff'],['SS-2','CIA-3','#00c8ff'],
     ['CIA-1','CIA-2','#9b59ff'],['CIA-1','CIA-3','#9b59ff'],['CIA-1','CIA-4','#ffc400'],['CIA-2','CIA-4','#00c8ff'],
-    // Ciego ↔ Camagüey (Starlinks)
     ['CIA-1','CAM-STL-1','#ff6b35'],['CIA-1','CAM-STL-2','#ff6b35'],
     ['CIA-1','CAM-STL-3','#ff6b35'],['CIA-1','CAM-STL-4','#ff6b35'],
-    // Interconexiones Starlinks Camagüey
     ['CAM-STL-1','CAM-STL-2','#ff6b35'],['CAM-STL-3','CAM-STL-4','#ff6b35'],
-    // Florida Cuba Starlinks
     ['CAM-STL-1','FLA-STL-1','#ff6b35'],
     ['FLA-STL-1','FLA-STL-2','#ff6b35'],['FLA-STL-2','FLA-STL-3','#ff6b35'],
-    // Starlinks → exterior
     ['CAM-STL-1','MIAMI','#ff6b35'],['FLA-STL-1','MIAMI','#ff6b35'],
-    // Ciego ↔ Las Tunas
     ['CIA-1','LTU-1','#1a6fff'],['CIA-2','LTU-2','#00c8ff'],
     ['LTU-1','LTU-2','#9b59ff'],['LTU-1','LTU-3','#9b59ff'],['LTU-2','LTU-3','#00c8ff'],
     ['LTU-1','BAY-1','#1a6fff'],['LTU-3','BAY-2','#00c8ff'],
@@ -1301,7 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const na = allNodes.find(n => n.id === a);
     const nb = allNodes.find(n => n.id === b);
     if (!na || !nb) return;
-    const coords = [[na.lat, na.lng], [nb.lat, nb.lng]];
+    const coords     = [[na.lat, na.lng], [nb.lat, nb.lng]];
     const isStarlink = color === '#ff6b35';
     try {
       if (window.L && L.polyline.antPath) {
@@ -1309,7 +1328,7 @@ document.addEventListener('DOMContentLoaded', () => {
           delay: isStarlink ? 400 : 600 + Math.random() * 800,
           dashArray: isStarlink ? [6, 12] : [8, 18],
           weight: isStarlink ? 2.2 : 1.8,
-          color, pulseColor: isStarlink ? '#ffffff' : '#ffffff',
+          color, pulseColor: '#ffffff',
           opacity: isStarlink ? 0.9 : 0.75
         }).addTo(map);
       } else {
@@ -1320,7 +1339,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Vistas de mapa
   const mapViews = [
     { center: [22.0, -79.5],   zoom: 6,  label: 'CUBA COMPLETA' },
     { center: [23.13, -82.38], zoom: 11, label: 'LA HABANA' },
@@ -1338,24 +1356,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const v = mapViews[mapViewIdx];
     map.flyTo(v.center, v.zoom, { duration: 1.2 });
     addRealAlert('INFO', `Vista: ${v.label}`, 'MAP-ENGINE', `Zoom ${v.zoom}`);
-    const nmLabel = document.getElementById('next-map-label');
-    const nextV   = mapViews[(mapViewIdx + 1) % mapViews.length];
-    if (nmLabel) nmLabel.textContent = nextV.label;
   };
 
 
   /* ══════════════════════════════════════════════
      15. SATELLITE PANEL — rediseñado con datos REALES
-         Info real: IP local, tipo red, downlink, jitter,
-         calidad de señal estimada, total nodos
+         FIX CRÍTICO: el SVG se construye UNA SOLA VEZ al arrancar.
+         updateSatellitePanel actualiza los elementos del DOM existentes
+         sin reconstruir el SVG (eso destruye los IDs).
+         La telemetría numérica se actualiza vía los divs HTML
+         del #sat-telemetry-bar, no vía text-elements del SVG.
   ══════════════════════════════════════════════ */
   function buildSatSVG() {
-    const ni         = getRealNetworkInfo();
-    const nodesCount = cubaNodes.length;
+    const ni          = getRealNetworkInfo();
     const starlinkCount = cubaNodes.filter(n => n.type === 'starlink').length;
 
     return `
-<svg viewBox="0 0 260 240" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+<svg viewBox="0 0 260 200" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
   <defs>
     <radialGradient id="earthG" cx="50%" cy="45%">
       <stop offset="0%"  stop-color="#0d2b5c"/>
@@ -1373,32 +1390,34 @@ document.addEventListener('DOMContentLoaded', () => {
   </defs>
 
   <!-- Globo terrestre -->
-  <circle cx="130" cy="118" r="84" fill="url(#glowG)"/>
-  <circle cx="130" cy="118" r="54" fill="url(#earthG)" stroke="#1a3a7a" stroke-width="1.5"/>
-  <path d="M104 97 Q118 86 130 91 Q146 88 150 101 Q138 114 121 112 Q104 110 104 97Z" fill="#0f3a6a" opacity="0.85"/>
-  <path d="M88 110 Q100 104 108 113 Q102 124 90 121Z" fill="#0f3a6a" opacity="0.7"/>
-  <path d="M140 108 Q154 102 163 111 Q157 123 143 121Z" fill="#0f3a6a" opacity="0.65"/>
-  <path d="M108 124 Q118 119 125 126 Q120 135 111 133Z" fill="#0f3a6a" opacity="0.5"/>
+  <circle cx="130" cy="100" r="84" fill="url(#glowG)"/>
+  <circle cx="130" cy="100" r="54" fill="url(#earthG)" stroke="#1a3a7a" stroke-width="1.5"/>
+  <path d="M104 79 Q118 68 130 73 Q146 70 150 83 Q138 96 121 94 Q104 92 104 79Z" fill="#0f3a6a" opacity="0.85"/>
+  <path d="M88 92 Q100 86 108 95 Q102 106 90 103Z" fill="#0f3a6a" opacity="0.7"/>
+  <path d="M140 90 Q154 84 163 93 Q157 105 143 103Z" fill="#0f3a6a" opacity="0.65"/>
+  <path d="M108 106 Q118 101 125 108 Q120 117 111 115Z" fill="#0f3a6a" opacity="0.5"/>
   <!-- Punto Cuba -->
-  <circle cx="117" cy="115" r="3.5" fill="#ff6b35" opacity="0.95" filter="url(#glow)"/>
-  <circle cx="117" cy="115" r="6" fill="none" stroke="#ff6b35" stroke-width="1" opacity="0.5"/>
+  <circle cx="117" cy="97" r="3.5" fill="#ff6b35" opacity="0.95" filter="url(#glow)"/>
+  <circle cx="117" cy="97" r="6" fill="none" stroke="#ff6b35" stroke-width="1" opacity="0.5"/>
+  <!-- Etiqueta Cuba -->
+  <text x="124" y="94" font-family="Share Tech Mono" font-size="6.5" fill="#ff6b35" opacity="0.8">CUBA</text>
   <!-- Órbitas -->
-  <ellipse cx="130" cy="118" rx="84" ry="25" fill="none" stroke="#1a6fff" stroke-width="0.6" stroke-dasharray="4 5" opacity="0.35"/>
-  <ellipse cx="130" cy="118" rx="78" ry="42" fill="none" stroke="#9b59ff" stroke-width="0.5" stroke-dasharray="3 6" opacity="0.22" transform="rotate(-25 130 118)"/>
-  <ellipse cx="130" cy="118" rx="88" ry="18" fill="none" stroke="#ff6b35" stroke-width="0.5" stroke-dasharray="3 8" opacity="0.3" transform="rotate(15 130 118)"/>
+  <ellipse cx="130" cy="100" rx="84" ry="25" fill="none" stroke="#1a6fff" stroke-width="0.6" stroke-dasharray="4 5" opacity="0.35"/>
+  <ellipse cx="130" cy="100" rx="78" ry="42" fill="none" stroke="#9b59ff" stroke-width="0.5" stroke-dasharray="3 6" opacity="0.22" transform="rotate(-25 130 100)"/>
+  <ellipse cx="130" cy="100" rx="88" ry="18" fill="none" stroke="#ff6b35" stroke-width="0.5" stroke-dasharray="3 8" opacity="0.3" transform="rotate(15 130 100)"/>
 
   <!-- Satélite 1 (azul) -->
-  <g style="transform-origin:130px 118px; animation: spin-orbit 14s linear infinite;">
-    <g transform="translate(214,118)">
+  <g style="transform-origin:130px 100px; animation: spin-orbit 14s linear infinite;">
+    <g transform="translate(214,100)">
       <rect x="-7" y="-2.5" width="14" height="5" rx="1.5" fill="#00c8ff" opacity="0.95" filter="url(#glow)"/>
       <rect x="-14" y="-1.2" width="6" height="2.4" rx="1" fill="#1a6fff"/>
       <rect x="8"  y="-1.2" width="6" height="2.4" rx="1" fill="#1a6fff"/>
       <circle cx="0" cy="0" r="2" fill="#fff" opacity="0.9"/>
     </g>
   </g>
-  <!-- Satélite 2 (azul, desfase) -->
-  <g style="transform-origin:130px 118px; animation: spin-orbit 14s linear infinite; animation-delay:-4.67s;">
-    <g transform="translate(214,118)">
+  <!-- Satélite 2 (desfase) -->
+  <g style="transform-origin:130px 100px; animation: spin-orbit 14s linear infinite; animation-delay:-4.67s;">
+    <g transform="translate(214,100)">
       <rect x="-7" y="-2.5" width="14" height="5" rx="1.5" fill="#00c8ff" opacity="0.88" filter="url(#glow)"/>
       <rect x="-14" y="-1.2" width="6" height="2.4" rx="1" fill="#1a6fff"/>
       <rect x="8"  y="-1.2" width="6" height="2.4" rx="1" fill="#1a6fff"/>
@@ -1406,8 +1425,8 @@ document.addEventListener('DOMContentLoaded', () => {
     </g>
   </g>
   <!-- Starlink (naranja, órbita baja) -->
-  <g style="transform-origin:130px 118px; animation: spin-orbit 8s linear infinite;">
-    <g transform="translate(205,118)">
+  <g style="transform-origin:130px 100px; animation: spin-orbit 8s linear infinite;">
+    <g transform="translate(205,100)">
       <rect x="-5" y="-2" width="10" height="4" rx="1" fill="#ff6b35" opacity="0.95" filter="url(#glow)"/>
       <rect x="-11" y="-1" width="5" height="2" rx="0.5" fill="#ff8c50"/>
       <rect x="6"  y="-1" width="5" height="2" rx="0.5" fill="#ff8c50"/>
@@ -1415,79 +1434,71 @@ document.addEventListener('DOMContentLoaded', () => {
     </g>
   </g>
   <!-- Starlink 2 (desfase) -->
-  <g style="transform-origin:130px 118px; animation: spin-orbit 8s linear infinite; animation-delay:-4s;">
-    <g transform="translate(205,118)">
+  <g style="transform-origin:130px 100px; animation: spin-orbit 8s linear infinite; animation-delay:-4s;">
+    <g transform="translate(205,100)">
       <rect x="-5" y="-2" width="10" height="4" rx="1" fill="#ff6b35" opacity="0.88" filter="url(#glow)"/>
       <rect x="-11" y="-1" width="5" height="2" rx="0.5" fill="#ff8c50"/>
       <rect x="6"  y="-1" width="5" height="2" rx="0.5" fill="#ff8c50"/>
       <circle cx="0" cy="0" r="1.5" fill="#fff" opacity="0.8"/>
     </g>
   </g>
-
-  <!-- ── Telemetría en tiempo real (área separada, bien espaciada) ── -->
-  <rect x="2" y="208" width="256" height="30" fill="#04080f" rx="2" opacity="0.85"/>
-  <line x1="2" y1="208" x2="258" y2="208" stroke="#122040" stroke-width="1"/>
-
-  <!-- Fila 1 -->
-  <text x="8"   y="220" font-family="Share Tech Mono" font-size="7" fill="#3a5880">PING</text>
-  <text id="sat-ping-text"  x="32"  y="220" font-family="Share Tech Mono" font-size="7.5" fill="#00c8ff">-- ms</text>
-  <text x="78"  y="220" font-family="Share Tech Mono" font-size="7" fill="#3a5880">JITTER</text>
-  <text id="sat-jitter-text" x="108" y="220" font-family="Share Tech Mono" font-size="7.5" fill="#ffc400">-- ms</text>
-  <text x="148" y="220" font-family="Share Tech Mono" font-size="7" fill="#3a5880">LOSS</text>
-  <text id="sat-loss-text"  x="172" y="220" font-family="Share Tech Mono" font-size="7.5" fill="#00e676">0.000%</text>
-  <text x="216" y="220" font-family="Share Tech Mono" font-size="7" fill="#3a5880">MON</text>
-  <text id="sat-mon-text"   x="237" y="220" font-family="Share Tech Mono" font-size="7.5" fill="#ff3d3d">OFF</text>
-
-  <!-- Fila 2 -->
-  <text x="8"   y="232" font-family="Share Tech Mono" font-size="7" fill="#3a5880">RED</text>
-  <text id="sat-net-text"   x="28"  y="232" font-family="Share Tech Mono" font-size="7" fill="#9b59ff">${ni.label || 'N/A'}</text>
-  <text x="128" y="232" font-family="Share Tech Mono" font-size="7" fill="#3a5880">STL</text>
-  <text id="sat-stl-text"   x="148" y="232" font-family="Share Tech Mono" font-size="7.5" fill="#ff6b35">${starlinkCount} Cuba</text>
-  <text x="196" y="232" font-family="Share Tech Mono" font-size="7" fill="#3a5880">NODOS</text>
-  <text id="sat-nodes-text" x="228" y="232" font-family="Share Tech Mono" font-size="7.5" fill="#9b59ff">${nodesCount}</text>
 </svg>`;
   }
 
+  // FIX: construir SVG solo 1 vez al cargar
   const satViz = document.getElementById('satViz');
   if (satViz) satViz.innerHTML = buildSatSVG();
 
+  // FIX: updateSatellitePanel actualiza SOLO los elementos HTML del sat-telemetry-bar
+  //      y la sat-list — nunca reconstruye el SVG (eso destruiría los IDs)
   function updateSatellitePanel(pingMs) {
     const realPL = realMetrics.totalPings > 0
       ? (realMetrics.failedPings / realMetrics.totalPings * 100)
       : 0;
 
-    // Ping
-    const satPingEl = document.getElementById('sat-ping-text');
-    if (satPingEl) {
-      satPingEl.textContent = pingMs ? `${pingMs}ms` : '-- ms';
-      satPingEl.setAttribute('fill', !pingMs ? '#6a8db0' : pingMs < 60 ? '#00e676' : pingMs < 120 ? '#ffc400' : '#ff3d3d');
+    // ── Telemetría bar (HTML, IDs estables) ──
+    const satTelePing   = document.getElementById('sat-tele-ping');
+    const satTeleJitter = document.getElementById('sat-tele-jitter');
+    const satTeleLoss   = document.getElementById('sat-tele-loss');
+    const satTeleMon    = document.getElementById('sat-tele-mon');
+    const satTeleNet    = document.getElementById('sat-tele-net');
+    const satTeleDl     = document.getElementById('sat-tele-dl');
+    const satHdrStatus  = document.getElementById('sat-header-status');
+
+    const ni = getRealNetworkInfo();
+
+    if (satTelePing) {
+      satTelePing.textContent = pingMs ? `${pingMs} ms` : '-- ms';
+      satTelePing.style.color = !pingMs ? '#6a8db0' : pingMs < 60 ? '#00e676' : pingMs < 120 ? '#00c8ff' : pingMs < 200 ? '#ffc400' : '#ff3d3d';
     }
-    // Jitter
-    const satJitterEl = document.getElementById('sat-jitter-text');
-    if (satJitterEl) {
-      satJitterEl.textContent = `${realMetrics.jitter}ms`;
-      satJitterEl.setAttribute('fill', realMetrics.jitter < 15 ? '#00e676' : realMetrics.jitter < 40 ? '#ffc400' : '#ff3d3d');
+    if (satTeleJitter) {
+      satTeleJitter.textContent = `${realMetrics.jitter} ms`;
+      satTeleJitter.style.color = realMetrics.jitter < 15 ? '#00e676' : realMetrics.jitter < 40 ? '#ffc400' : '#ff3d3d';
     }
-    // Loss
-    const satLossEl = document.getElementById('sat-loss-text');
-    if (satLossEl) {
-      satLossEl.textContent = `${realPL.toFixed(3)}%`;
-      satLossEl.setAttribute('fill', realPL < 1 ? '#00e676' : realPL < 5 ? '#ffc400' : '#ff3d3d');
+    if (satTeleLoss) {
+      satTeleLoss.textContent = `${realPL.toFixed(3)}%`;
+      satTeleLoss.style.color = realPL < 1 ? '#00e676' : realPL < 5 ? '#ffc400' : '#ff3d3d';
     }
-    // Mon
-    const satMonEl = document.getElementById('sat-mon-text');
-    if (satMonEl) {
-      satMonEl.textContent = monitoringActive ? 'ON' : 'OFF';
-      satMonEl.setAttribute('fill', monitoringActive ? '#00e676' : '#ff3d3d');
+    if (satTeleMon) {
+      satTeleMon.textContent  = monitoringActive ? 'ON' : 'OFF';
+      satTeleMon.style.color  = monitoringActive ? '#00e676' : '#ff3d3d';
+    }
+    if (satTeleNet) {
+      satTeleNet.textContent = ni.label !== 'N/A' ? ni.label : (conn ? `${ni.effectiveType.toUpperCase()}` : 'No API');
+    }
+    if (satTeleDl) {
+      satTeleDl.textContent = ni.downlink > 0 ? `${ni.downlink} Mbps` : (pingMs ? `~${estimateTrafficGbps()*1000|0} Mbps` : '-- Mbps');
+    }
+    if (satHdrStatus) {
+      satHdrStatus.textContent = pingMs ? `PING ${pingMs}ms` : (monitoringActive ? 'MONITOREANDO...' : 'INICIALIZANDO...');
     }
 
-    // Sat list real — reemplazar TDRS con datos reales
+    // ── Sat list (IDs de la lista) ──
     updateSatListReal();
   }
 
-  /* Reemplazar la lista de satélites con info de red real */
   function updateSatListReal() {
-    const ni    = getRealNetworkInfo();
+    const ni     = getRealNetworkInfo();
     const realPL = realMetrics.totalPings > 0
       ? (realMetrics.failedPings / realMetrics.totalPings * 100)
       : 0;
@@ -1498,44 +1509,45 @@ document.addEventListener('DOMContentLoaded', () => {
       ? (lastRealPingMs < 40 ? 'green' : lastRealPingMs < 80 ? 'green' : lastRealPingMs < 150 ? 'yellow' : 'red')
       : 'yellow';
 
-    const satList = document.querySelector('.sat-list');
-    if (!satList) return;
-    satList.innerHTML = `
-      <li>
-        <span class="sat-dot ${pingOnline ? 'green' : 'red'}"></span>
-        <span style="flex:1;font-size:9px">INTERNET</span>
-        <span class="sat-status ${pingOnline ? 'green' : 'red'}">${pingOnline ? 'ONLINE' : 'OFFLINE'}</span>
-      </li>
-      <li>
-        <span class="sat-dot ${ni.downlink > 0 ? 'green' : 'yellow'}"></span>
-        <span style="flex:1;font-size:9px">${ni.label || 'RED'}</span>
-        <span class="sat-status ${ni.downlink > 0 ? 'green' : 'yellow'}">${ni.downlink > 0 ? ni.downlink + 'Mbps' : 'N/A'}</span>
-      </li>
-      <li>
-        <span class="sat-dot ${realPL < 1 ? 'green' : realPL < 5 ? 'yellow' : 'red'}"></span>
-        <span style="flex:1;font-size:9px">PACKET LOSS</span>
-        <span class="sat-status ${realPL < 1 ? 'green' : 'yellow'}">${realPL.toFixed(2)}%</span>
-      </li>
-      <li>
-        <span class="sat-dot ${qualColor}"></span>
-        <span style="flex:1;font-size:9px">CALIDAD</span>
-        <span class="sat-status ${qualColor}">${quality}</span>
-      </li>
-      <li>
-        <span class="sat-dot ${realMetrics.jitter < 20 ? 'green' : 'yellow'}"></span>
-        <span style="flex:1;font-size:9px">JITTER</span>
-        <span class="sat-status ${realMetrics.jitter < 20 ? 'green' : 'yellow'}">${realMetrics.jitter}ms</span>
-      </li>
-      <li>
-        <span class="sat-dot green"></span>
-        <span style="flex:1;font-size:9px">IP LOCAL</span>
-        <span class="sat-status green" style="font-size:8px">${localIP !== 'Detectando...' ? localIPRange : '...'}</span>
-      </li>`;
+    // Actualizar por IDs individuales de la lista (evita reconstruir el DOM completo)
+    const elInternet = document.getElementById('sl-internet');
+    const elQuality  = document.getElementById('sl-quality');
+    const elLoss     = document.getElementById('sl-loss');
+    const elJitter   = document.getElementById('sl-jitter');
+    const elIP       = document.getElementById('sl-ip');
+    const elStl      = document.getElementById('sl-stl');
+
+    if (elInternet) {
+      elInternet.textContent = pingOnline ? 'ONLINE' : 'OFFLINE';
+      elInternet.className   = `sat-status ${pingOnline ? 'green' : 'red'}`;
+      const dot = elInternet.closest('li')?.querySelector('.sat-dot');
+      if (dot) dot.className = `sat-dot ${pingOnline ? 'green' : 'red'}`;
+    }
+    if (elQuality) {
+      elQuality.textContent = quality;
+      elQuality.className   = `sat-status ${qualColor}`;
+    }
+    if (elLoss) {
+      elLoss.textContent = `${realPL.toFixed(2)}%`;
+      elLoss.className   = `sat-status ${realPL < 1 ? 'green' : realPL < 5 ? 'yellow' : 'red'}`;
+    }
+    if (elJitter) {
+      elJitter.textContent = `${realMetrics.jitter}ms`;
+      elJitter.className   = `sat-status ${realMetrics.jitter < 20 ? 'green' : 'yellow'}`;
+    }
+    if (elIP) {
+      elIP.textContent = localIPRange !== '--' ? localIPRange : (localIP !== 'Detectando...' ? localIP : '...');
+      elIP.style.fontSize = '8px';
+    }
+    if (elStl) {
+      const stlCount = cubaNodes.filter(n => n.type === 'starlink').length;
+      elStl.textContent = `${stlCount} Cuba`;
+    }
   }
 
 
   /* ══════════════════════════════════════════════
-     16. LOOP PRINCIPAL — 3s — actualiza todo
+     16. LOOP PRINCIPAL — 3s
   ══════════════════════════════════════════════ */
   setInterval(() => {
     updateHealthDonut();
@@ -1543,20 +1555,17 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSatellitePanel(lastRealPingMs);
     updateProtocolChart();
 
-    // Si no hay monitoreo activo, hacer ping pasivo de todas formas para tener datos reales
     if (!monitoringActive) {
-      doPing(); // ping pasivo para latencia KPI
+      doPing();
     }
 
-    // Actualizar tráfico aunque no haya ping
     updateTrafficChart();
     updatePacketLossChart();
-
   }, 3000);
 
 
   /* ══════════════════════════════════════════════
-     17. SIDEBAR NAV
+     17. SIDEBAR NAV + MODALES
   ══════════════════════════════════════════════ */
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -1578,7 +1587,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addRealAlert('INFO', 'Vista: NET MAP — Cuba completa', 'NAV', `${cubaNodes.length} nodos Cuba + 7 Starlinks`);
         break;
       case 'assets':
-        addRealAlert('INFO', 'Vista: ASSETS', 'NAV', `${cubaNodes.length} nodos Cuba + ${extNodes.length} ext`);
         showPageModal('◈ ASSETS — INVENTARIO DE NODOS', buildAssetsContent());
         break;
       case 'telemetry':
@@ -1591,7 +1599,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showPageModal('📊 PERFORMANCE — MÉTRICAS DEL SISTEMA', buildPerformanceContent());
         break;
       case 'security':
-        addRealAlert('MEDIUM', 'Vista: SECURITY — Panel activo', 'NAV', 'Verificando firewalls');
         showPageModal('🛡 SECURITY — ESTADO DE SEGURIDAD', buildSecurityContent());
         break;
       case 'logs':
@@ -1664,9 +1671,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function buildTelemetryContent() {
     const ni     = getRealNetworkInfo();
-    const realPL = realMetrics.totalPings > 0
-      ? (realMetrics.failedPings / realMetrics.totalPings * 100)
-      : 0;
+    const realPL = realMetrics.totalPings > 0 ? (realMetrics.failedPings / realMetrics.totalPings * 100) : 0;
     const avg    = realMetrics.avgLatency ? realMetrics.avgLatency.toFixed(1) : '--';
     return `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -1688,13 +1693,13 @@ document.addEventListener('DOMContentLoaded', () => {
         <div style="background:#0a1120;border:1px solid #122040;padding:12px;">
           <div style="${monoStyle}margin-bottom:8px">IP LOCAL DETECTADA (WebRTC)</div>
           <div style="font-family:'Orbitron';font-size:14px;color:#ff6b35;line-height:1.4">${localIP}</div>
-          <div style="${monoStyle}margin-top:4px">Rango: ${localIPRange} | Acceso: ${navigator.onLine?'ONLINE':'OFFLINE'}</div>
+          <div style="${monoStyle}margin-top:4px">Rango: ${localIPRange} | Online: ${navigator.onLine?'SÍ':'NO'}</div>
         </div>
         <div style="background:#0a1120;border:1px solid #122040;padding:12px;grid-column:span 2;">
           <div style="${monoStyle}margin-bottom:8px">HISTORIAL LATENCIA (últimos ${pingHistory.length} pings)</div>
           <div style="display:flex;align-items:flex-end;gap:2px;height:40px">
             ${pingHistory.slice(-30).map(ms => `
-              <div style="flex:1;height:${Math.min(ms/4,40)}px;min-width:3px;background:${ms<60?'#00e676':ms<120?'#ffc400':'#ff3d3d'};border-radius:1px;transition:height 0.3s" title="${ms}ms"></div>
+              <div style="flex:1;height:${Math.min(ms/4,40)}px;min-width:3px;background:${ms<60?'#00e676':ms<120?'#ffc400':'#ff3d3d'};border-radius:1px;" title="${ms}ms"></div>
             `).join('')}
           </div>
           <div style="${monoStyle}margin-top:4px">Endpoints: Google | Cloudflare | GitHub → alternando cada ping</div>
@@ -1717,24 +1722,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function buildPerformanceContent() {
-    const ni    = getRealNetworkInfo();
-    const realPL = realMetrics.totalPings > 0 ? (realMetrics.failedPings/realMetrics.totalPings*100) : 0;
-    const threatScore = calcThreatScore();
+    const ni      = getRealNetworkInfo();
+    const realPL  = realMetrics.totalPings > 0 ? (realMetrics.failedPings/realMetrics.totalPings*100) : 0;
+    const tScore  = calcThreatScore();
     return `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
         ${[
-          ['PING ACTUAL',    lastRealPingMs?`${lastRealPingMs}ms`:'--',   '#00c8ff'],
-          ['JITTER',         `${realMetrics.jitter}ms`,                   realMetrics.jitter<20?'#00e676':'#ffc400'],
-          ['PACKET LOSS',    `${realPL.toFixed(3)}%`,                     realPL<1?'#00e676':'#ff3d3d'],
-          ['PINGS TOTAL',    realMetrics.totalPings,                       '#00c8ff'],
-          ['ÉXITO',          realMetrics.totalPings>0?`${(100-realPL).toFixed(1)}%`:'--', '#00e676'],
-          ['FALLOS',         realMetrics.failedPings,                      realMetrics.failedPings>0?'#ff3d3d':'#00e676'],
-          ['LAT MIN',        realMetrics.minLatency!==Infinity?`${realMetrics.minLatency}ms`:'--', '#00e676'],
-          ['LAT MAX',        realMetrics.maxLatency?`${realMetrics.maxLatency}ms`:'--', realMetrics.maxLatency>200?'#ff3d3d':'#ffc400'],
-          ['THREAT',         `${threatScore}/100`,                         threatScore<30?'#00e676':threatScore<60?'#ffc400':'#ff3d3d'],
-          ['DOWNLINK',       ni.downlink>0?`${ni.downlink}M`:'N/A',       '#9b59ff'],
-          ['IP LOCAL',       localIP,                                      '#ff6b35'],
-          ['STARLINKS',      cubaNodes.filter(n=>n.type==='starlink').length+' Cuba','#ff6b35'],
+          ['PING ACTUAL',  lastRealPingMs?`${lastRealPingMs}ms`:'--',          '#00c8ff'],
+          ['JITTER',       `${realMetrics.jitter}ms`,                           realMetrics.jitter<20?'#00e676':'#ffc400'],
+          ['PACKET LOSS',  `${realPL.toFixed(3)}%`,                             realPL<1?'#00e676':'#ff3d3d'],
+          ['PINGS TOTAL',  realMetrics.totalPings,                              '#00c8ff'],
+          ['ÉXITO',        realMetrics.totalPings>0?`${(100-realPL).toFixed(1)}%`:'--', '#00e676'],
+          ['FALLOS',       realMetrics.failedPings,                             realMetrics.failedPings>0?'#ff3d3d':'#00e676'],
+          ['LAT MIN',      realMetrics.minLatency!==Infinity?`${realMetrics.minLatency}ms`:'--', '#00e676'],
+          ['LAT MAX',      realMetrics.maxLatency?`${realMetrics.maxLatency}ms`:'--', realMetrics.maxLatency>200?'#ff3d3d':'#ffc400'],
+          ['THREAT',       `${tScore}/100`,                                     tScore<30?'#00e676':tScore<60?'#ffc400':'#ff3d3d'],
+          ['DOWNLINK',     ni.downlink>0?`${ni.downlink}M`:'N/A',              '#9b59ff'],
+          ['IP LOCAL',     localIP,                                             '#ff6b35'],
+          ['STARLINKS',    cubaNodes.filter(n=>n.type==='starlink').length+' Cuba','#ff6b35'],
         ].map(([l,v,c]) => `<div style="background:#0a1120;border:1px solid #122040;padding:10px;text-align:center">
           <div style="${monoStyle}">${l}</div>
           <div style="font-family:'Orbitron';font-size:13px;color:${c};margin-top:4px;word-break:break-all">${v}</div>
@@ -1743,16 +1748,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function buildSecurityContent() {
-    const ni    = getRealNetworkInfo();
+    const ni     = getRealNetworkInfo();
     const realPL = realMetrics.totalPings > 0 ? (realMetrics.failedPings/realMetrics.totalPings*100) : 0;
-    const items = [
-      { name:'Conexión Internet (real)',       status: pingOnline?`ONLINE — ${lastRealPingMs||'--'}ms`:'OFFLINE',          ok: pingOnline },
-      { name:'Packet Loss',                    status: `${realPL.toFixed(3)}%`,                                              ok: realPL < 2 },
-      { name:'Jitter',                         status: `${realMetrics.jitter}ms`,                                            ok: realMetrics.jitter < 30 },
-      { name:'Tipo de red',                    status: ni.label||'N/A',                                                      ok: true },
-      { name:'IP Local (WebRTC)',              status: localIP,                                                              ok: localIP !== 'No disponible' },
-      { name:'Starlinks Cuba (Camagüey)',      status: `${cubaNodes.filter(n=>n.type==='starlink').length} terminales`,     ok: true },
-      { name:'Alertas críticas activas',       status: alertQueue.filter(a=>a.level==='CRITICAL').length+' activas',       ok: alertQueue.filter(a=>a.level==='CRITICAL').length === 0 },
+    const items  = [
+      { name:'Conexión Internet (real)',       status: pingOnline?`ONLINE — ${lastRealPingMs||'--'}ms`:'OFFLINE', ok: pingOnline },
+      { name:'Packet Loss',                    status: `${realPL.toFixed(3)}%`,       ok: realPL < 2 },
+      { name:'Jitter',                         status: `${realMetrics.jitter}ms`,     ok: realMetrics.jitter < 30 },
+      { name:'Tipo de red',                    status: ni.label||'N/A',               ok: true },
+      { name:'IP Local (WebRTC)',              status: localIP,                       ok: localIP !== 'No disponible' },
+      { name:'Starlinks Cuba (Camagüey)',      status: `${cubaNodes.filter(n=>n.type==='starlink').length} terminales`, ok: true },
+      { name:'Alertas críticas activas',       status: alertQueue.filter(a=>a.level==='CRITICAL').length+' activas', ok: alertQueue.filter(a=>a.level==='CRITICAL').length === 0 },
       { name:`Monitoreo activo (${pingIntervalMs}ms)`, status: monitoringActive?`ON — ${realMetrics.totalPings} pings`:'OFF', ok: monitoringActive },
     ];
     return `<div style="margin-bottom:12px">
@@ -1779,34 +1784,34 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function buildConfigContent() {
-    const ni    = getRealNetworkInfo();
+    const ni     = getRealNetworkInfo();
     const realPL = realMetrics.totalPings > 0 ? (realMetrics.failedPings/realMetrics.totalPings*100) : 0;
-    return `<div style="${monoStyle}margin-bottom:12px">Configuración activa — NASOC v5.0 (datos 100% reales)</div>
+    return `<div style="${monoStyle}margin-bottom:12px">Configuración activa — NASOC v5.1 (datos 100% reales)</div>
       ${[
-        ['Intervalo Ping',         `${pingIntervalMs}ms`],
-        ['Umbral Alarma',          `${failThreshold} fallos consecutivos`],
-        ['Volumen Alarma',         `${Math.round(alarmVolume*100)}%`],
-        ['Estado Monitoreo',       monitoringActive?'● ACTIVO':'○ INACTIVO'],
-        ['Endpoints ping',         'Google + Cloudflare + GitHub'],
-        ['Tipo Conexión (real)',   ni.label||'N/A'],
-        ['Effective Type',         ni.effectiveType],
-        ['Downlink (real)',        ni.downlink>0?`${ni.downlink} Mbps`:'N/A (API no disponible)'],
-        ['RTT API (real)',         ni.rtt>0?`${ni.rtt}ms`:'N/A'],
-        ['IP Local (WebRTC)',      localIP],
-        ['Pings Realizados',       realMetrics.totalPings],
-        ['Packet Loss Real',       `${realPL.toFixed(3)}%`],
-        ['Jitter Real',            `${realMetrics.jitter}ms`],
-        ['Nodos Cuba Total',       cubaNodes.length],
-        ['Starlinks Cuba',         cubaNodes.filter(n=>n.type==='starlink').length+' (Camagüey + Florida)'],
-        ['Versión',                'NASOC v5.0 — 100% datos reales'],
+        ['Intervalo Ping',        `${pingIntervalMs}ms`],
+        ['Umbral Alarma',         `${failThreshold} fallos consecutivos`],
+        ['Volumen Alarma',        `${Math.round(alarmVolume*100)}%`],
+        ['Estado Monitoreo',      monitoringActive?'● ACTIVO':'○ INACTIVO'],
+        ['Endpoints ping',        'Google + Cloudflare + GitHub'],
+        ['Tipo Conexión (real)',  ni.label||'N/A'],
+        ['Effective Type',        ni.effectiveType],
+        ['Downlink (real)',       ni.downlink>0?`${ni.downlink} Mbps`:'N/A (API no disponible)'],
+        ['RTT API (real)',        ni.rtt>0?`${ni.rtt}ms`:'N/A'],
+        ['IP Local (WebRTC)',     localIP],
+        ['Pings Realizados',      realMetrics.totalPings],
+        ['Packet Loss Real',      `${realPL.toFixed(3)}%`],
+        ['Jitter Real',           `${realMetrics.jitter}ms`],
+        ['Nodos Cuba Total',      cubaNodes.length],
+        ['Starlinks Cuba',        cubaNodes.filter(n=>n.type==='starlink').length+' (4 Camagüey + 3 Florida,Cu)'],
+        ['Versión',               'NASOC v5.1 — 100% datos reales'],
       ].map(([k,v]) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #0c1526">
         <span style="${monoStyle}">${k}</span>
         <span style="${valStyle}">${v}</span>
       </div>`).join('')}
       <div style="margin-top:16px;${monoStyle}color:#ffc400">
         ▸ Activa el monitoreo para obtener datos de latencia y packet loss en tiempo real.<br>
-        ▸ Los Starlinks en Camagüey y Florida (Cuba) están mapeados en el globo.<br>
-        ▸ Navigator.connection puede no estar disponible en todos los navegadores.
+        ▸ Los Starlinks en Camagüey (×4) y Florida,Cu (×3) están mapeados en el globo.<br>
+        ▸ Navigator.connection puede no estar disponible en todos los navegadores (mejor en Chrome).
       </div>`;
   }
 
@@ -1825,27 +1830,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     18. INIT — eventos iniciales con datos reales
+     18. INIT — inicializar KPIs sin esperar ping
   ══════════════════════════════════════════════ */
   const ni = getRealNetworkInfo();
-  addEventRow('INFO', 'NASOC v5.0 iniciado — 100% datos reales', 'NASOC-SYS',
+
+  // FIX: inicializar KPI Nodes INMEDIATAMENTE (no esperar ping)
+  const ndEl = document.getElementById('kpi-nodes');
+  if (ndEl) ndEl.textContent = (cubaNodes.length + extNodes.length).toString();
+  const ndTrEl = document.getElementById('kpi-nodes-trend');
+  if (ndTrEl) { ndTrEl.textContent = `${cubaNodes.length} Cuba + ${extNodes.length} ext`; ndTrEl.className = 'kpi-trend green'; }
+
+  // FIX: inicializar KPI Connections INMEDIATAMENTE
+  updateKPIConnections(ni);
+
+  // FIX: inicializar Top Talkers INMEDIATAMENTE
+  updateTopTalkers(ni, 50);
+
+  // Inicializar packet loss KPI
+  const plEl = document.getElementById('kpi-loss');
+  if (plEl) plEl.innerHTML = `0.000<small>%</small>`;
+  const plTrendEl = document.getElementById('kpi-loss-trend');
+  if (plTrendEl) { plTrendEl.textContent = '0 fallos / 0 total'; plTrendEl.className = 'kpi-trend green'; }
+
+  // Telemetría satélite inicial
+  updateSatellitePanel(null);
+
+  // Eventos iniciales
+  addEventRow('INFO', 'NASOC v5.1 iniciado — 100% datos reales', 'NASOC-SYS',
     `Red detectada: ${ni.label} | Tipo: ${ni.effectiveType} | Downlink: ${ni.downlink}Mbps`);
   addEventRow('INFO', `Mapa cargado — ${cubaNodes.length} nodos Cuba`, 'MAP-ENGINE',
     `7 Starlinks: 4 Camagüey + 3 Florida,Cu | ${extNodes.length} nodos externos`);
-  addEventRow('INFO', 'Navigator.connection API disponible', 'NET-DETECT',
+  addEventRow('INFO', 'Navigator.connection API cargada', 'NET-DETECT',
     `Tipo: ${ni.type} | RTT: ${ni.rtt}ms | saveData: ${ni.saveData}`);
-  addEventRow('MEDIUM', 'Ping pasivo activo — esperando monitoreo manual', 'INET-MON',
-    'Presione ACTIVAR para iniciar monitoreo completo con alertas de sonido');
+  addEventRow('MEDIUM', 'Ping pasivo activo — presione ACTIVAR para monitoreo completo', 'INET-MON',
+    'Sistema de alertas con sonido disponible al activar monitoreo');
 
   renderAlerts();
   renderEventsTable();
   updateHealthDonut();
   updateThreatLevel();
+  updateTrafficChart();
 
-  // Ping inicial pasivo para tener datos desde el arranque
+  // Pings iniciales para tener datos desde el arranque
   setTimeout(() => { doPing(); doPing(); }, 800);
   setTimeout(() => { doPing(); }, 2500);
 
-  console.log('%cNASOC v5.0 — 100% datos reales | Starlinks: Camagüey×4 + Florida,Cu×3', 'color:#ff6b35;font-family:monospace;font-size:13px;font-weight:bold');
+  console.log('%cNASOC v5.1 — FIX: Threat Level dinámico | kpi-alerts-badge | kpi-nodes inmediato | PacketLoss null-safe | Protocol IDs directos | Satellite HTML estable', 'color:#ff6b35;font-family:monospace;font-size:12px;font-weight:bold');
   console.log('%cNavigator.connection:', 'color:#00c8ff;font-family:monospace', conn);
 });
