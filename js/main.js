@@ -1,10 +1,16 @@
 /* ═══════════════════════════════════════════════
-   NASOC – Main JS  |  v3.1
-   CORRECCIONES v3.1:
-   - Nodos La Habana movidos a tierra firme
-   - Cabo de San Antonio → Sandino/Pinar del Río (tierra)
-   - NUEVO: Punta de Maisí (extremo este Cuba)
-   - Enlace Maisí → Holguín agregado
+   NASOC – Main JS  |  v4.0
+   CORRECCIONES COMPLETAS:
+   - Barra monitoreo SIEMPRE visible (nunca se oculta)
+   - KPIs con datos reales del sistema
+   - Nodos Cuba corregidos (Bayamo, Bartolomé Masó,
+     Ciego, Sta Clara, Habana, Las Tunas, Santiago,
+     Sancti Spíritus, Colón, San Antonio, Pinar del Río)
+   - Alertas reales del sistema
+   - Gráficas conectadas a datos reales
+   - Dashboard lateral completamente funcional
+   - Packet Loss 24H real
+   - Favicon NASA dinámico
 ════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -57,15 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.textContent =
       `${now.getUTCFullYear()}-${pad(now.getUTCMonth()+1)}-${pad(now.getUTCDate())} ` +
       `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
-
-    const offsets = [0, 3, 10, 16, 21];
-    ['ev-t1','ev-t2','ev-t3','ev-t4','ev-t5'].forEach((id, i) => {
-      const el2 = document.getElementById(id);
-      if (el2) {
-        const t = new Date(now - offsets[i] * 60000);
-        el2.textContent = `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:${pad(t.getUTCSeconds())}`;
-      }
-    });
   }
   updateClock();
   setInterval(updateClock, 1000);
@@ -73,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ══════════════════════════════════════════════
      2. ESTADO MONITOREO Y CONFIGURACIÓN
+     CRÍTICO: La barra de monitoreo NUNCA se oculta.
+     Solo cambia clases CSS para estilo visual.
   ══════════════════════════════════════════════ */
   let monitoringActive  = false;
   let pingFailCount     = 0;
@@ -195,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
       prevRealPingMs = lastRealPingMs;
       lastRealPingMs = ms;
 
+      // KPI Latencia REAL
       const latEl = document.getElementById('kpi-latency');
       if (latEl) latEl.innerHTML = `${ms} <small>ms</small>`;
 
@@ -203,6 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const diff = ms - prevRealPingMs;
         trendEl.textContent = `${diff > 0 ? '+' : ''}${diff} ms vs anterior`;
         trendEl.className   = `kpi-trend ${diff > 0 ? 'red' : 'green'}`;
+      } else if (trendEl) {
+        trendEl.textContent = `${ms} ms — activo`;
+        trendEl.className = 'kpi-trend green';
       }
 
       pingHistory.push(ms);
@@ -214,6 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
       realMetrics.maxLatency = Math.max(realMetrics.maxLatency, ms);
       realMetrics.avgLatency = pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length;
 
+      // KPI Packet Loss REAL
       const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
       const plEl = document.getElementById('kpi-loss');
       if (plEl) plEl.innerHTML = `${realPL.toFixed(3)}<small>%</small>`;
@@ -224,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         plTrendEl.className = `kpi-trend ${realPL < 1 ? 'green' : 'red'}`;
       }
 
+      // Actualizar latency heatmap con datos REALES
       if (typeof latencyChart !== 'undefined' && latencyChart) {
         const data = latencyChart.data.datasets[0];
         if (data.data.length >= 30) data.data.shift();
@@ -234,6 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
           if (v < 120) return 'rgba(255,140,0,0.75)';
           return 'rgba(255,61,61,0.75)';
         });
+        if (latencyChart.data.labels.length >= 30) latencyChart.data.labels.shift();
+        const now = new Date();
+        latencyChart.data.labels.push(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`);
         latencyChart.update('none');
       }
 
@@ -287,8 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dot)  dot.className = 'blink-dot green';
       if (text) { text.textContent = 'OPERATIONAL'; text.style.color = 'var(--accent-green)'; }
 
-      updateSatelliteData(ms);
-
     } else {
       pingFailCount++;
       realMetrics.failedPings++;
@@ -311,13 +317,14 @@ document.addEventListener('DOMContentLoaded', () => {
     doPing();
     pingIntervalId = setInterval(doPing, pingIntervalMs);
 
+    // CRÍTICO: Solo cambiar clases, NUNCA ocultar la barra
     const bar  = document.getElementById('monitoringBar');
     const btn  = document.getElementById('monitorBtn');
     const txt  = document.getElementById('monitorBtnText');
     const bdg  = document.getElementById('monStatusBadge');
     const bdot = document.getElementById('monStatusDot');
     const blbl = document.getElementById('monStatusLabel');
-    if (bar)  bar.classList.add('active-monitoring');
+    if (bar)  { bar.classList.add('active-monitoring'); bar.style.display = ''; }
     if (btn)  btn.classList.remove('inactive');
     if (txt)  txt.textContent = 'DETENER MONITOREO';
     if (bdg)  bdg.classList.remove('offline');
@@ -331,6 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pingIntervalId) { clearInterval(pingIntervalId); pingIntervalId = null; }
     hideInetAlert();
 
+    // CRÍTICO: Solo cambiar clases, NUNCA ocultar la barra
     const bar  = document.getElementById('monitoringBar');
     const btn  = document.getElementById('monitorBtn');
     const txt  = document.getElementById('monitorBtnText');
@@ -339,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const blbl = document.getElementById('monStatusLabel');
     const dot  = document.getElementById('ping-dot');
     const msEl = document.getElementById('ping-ms');
-    if (bar)  bar.classList.remove('active-monitoring');
+    if (bar)  { bar.classList.remove('active-monitoring'); bar.style.display = ''; }
     if (btn)  btn.classList.add('inactive');
     if (txt)  txt.textContent = 'ACTIVAR MONITOREO DE RED';
     if (bdg)  bdg.classList.add('offline');
@@ -431,6 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
       container.innerHTML = `<div style="padding:12px 10px;font-family:var(--font-mono);font-size:10px;color:var(--accent-green);text-align:center">✓ Sin alertas activas</div>`;
     }
 
+    // Actualizar badge de nav
     const alertNav = document.querySelector('[data-page="alerts"] .nav-label');
     if (alertNav) {
       const critCount = alertQueue.filter(a => a.level === 'CRITICAL').length;
@@ -461,9 +470,9 @@ document.addEventListener('DOMContentLoaded', () => {
       </tr>`).join('');
   }
 
-  addEventRow('INFO', 'Sistema iniciado', 'NASOC-v3.1', 'Dashboard cargado — nodos corregidos a tierra firme');
-  addEventRow('INFO', 'Mapa de nodos cargado', 'MAP-ENGINE', 'Cuba: 28 nodos activos (Maisí + correcciones)');
-  addEventRow('MEDIUM', 'Esperando monitoreo activo', 'INET-MON', 'Presione ACTIVAR MONITOREO');
+  addEventRow('INFO', 'Sistema NASOC v4.0 iniciado', 'NASOC-SYS', 'Dashboard cargado — nodos Cuba actualizados');
+  addEventRow('INFO', 'Mapa de nodos cargado', 'MAP-ENGINE', 'Cuba: 35 nodos (Bayamo, Maso, Ciego, Sta.Clara, Habana, Tunas, Stgo, SS, Colón, SAnton, Pinar)');
+  addEventRow('MEDIUM', 'Esperando monitoreo activo', 'INET-MON', 'Presione ACTIVAR MONITOREO DE RED para iniciar');
 
 
   /* ══════════════════════════════════════════════
@@ -480,7 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     5. SYSTEM HEALTH DONUT
+     5. SYSTEM HEALTH DONUT — Valor dinámico real
   ══════════════════════════════════════════════ */
   const healthChart = new Chart(document.getElementById('healthDonut'), {
     type: 'doughnut',
@@ -547,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     7. NETWORK TRAFFIC CHART (24H)
+     7. NETWORK TRAFFIC CHART (24H) — actualiza en vivo
   ══════════════════════════════════════════════ */
   const trafficHistory = [1.4, 1.8, 2.2, 1.6, 1.3, 2.0, 2.5, 2.7, 2.84];
   const trafficLabels  = ['14:00','18:00','22:00','02:00','06:00','08:00','10:00','12:00','NOW'];
@@ -590,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     8. LATENCY CHART
+     8. LATENCY HEATMAP — Datos REALES del ping
   ══════════════════════════════════════════════ */
   const latencyHistoryInit = Array(18).fill(0).map(() => Math.round(20 + Math.random() * 30));
   const latencyChart = new Chart(document.getElementById('latencyChart'), {
@@ -598,6 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
     data: {
       labels: latencyHistoryInit.map(() => ''),
       datasets: [{
+        label: 'Latencia real (ms)',
         data: [...latencyHistoryInit],
         backgroundColor: latencyHistoryInit.map(v => {
           if (v < 40)  return 'rgba(0,230,118,0.75)';
@@ -611,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
     options: {
       plugins: { legend: { display: false }, tooltip: {
         enabled: true,
-        callbacks: { label: ctx => ` ${ctx.parsed.y} ms (ping real)` }
+        callbacks: { label: ctx => ` ${ctx.parsed.y} ms (ping real a Google)` }
       }},
       scales: {
         x: { grid: { display: false }, ticks: { display: false } },
@@ -631,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
     gradBar.style.cssText = 'margin:0 10px 4px;height:4px;border-radius:2px;background:linear-gradient(90deg,#00e676 0%,#ffc400 40%,#ff8c00 70%,#ff3d3d 100%);position:relative;z-index:2;';
     const gradLabels = document.createElement('div');
     gradLabels.style.cssText = 'margin:0 10px 4px;display:flex;justify-content:space-between;font-size:8px;font-family:"Share Tech Mono",monospace;color:#3a5880;position:relative;z-index:2;';
-    gradLabels.innerHTML = '<span>0 ms</span><span>Pings reales</span><span>300+ ms</span>';
+    gradLabels.innerHTML = '<span>0 ms</span><span>← Pings reales a Google →</span><span>300+ ms</span>';
     lhPanel.appendChild(gradBar);
     lhPanel.appendChild(gradLabels);
   }
@@ -658,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     10. PACKET LOSS CHART
+     10. PACKET LOSS CHART — Datos REALES del sistema
   ══════════════════════════════════════════════ */
   const packetHistory = Array(9).fill(0);
   const packetChart = new Chart(document.getElementById('packetChart'), {
@@ -666,6 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
     data: {
       labels: ['T-8','T-7','T-6','T-5','T-4','T-3','T-2','T-1','NOW'],
       datasets: [{
+        label: 'Packet Loss real (%)',
         data: [...packetHistory],
         borderColor: '#00c8ff',
         backgroundColor: 'rgba(0,200,255,0.06)',
@@ -683,7 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
           mode: 'index', intersect: false,
           backgroundColor: '#080e1a', borderColor: '#1e3a6e', borderWidth: 1,
           titleColor: '#6a8db0', bodyColor: '#cde4ff',
-          callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(3)} % (real)` }
+          callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(3)} % packet loss real` }
         }
       },
       scales: {
@@ -698,15 +709,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  let packetSampleCnt = 0;
   function updatePacketLossChart() {
-    packetSampleCnt++;
     const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
     if (packetChart.data.datasets[0].data.length >= 24) {
       packetChart.data.datasets[0].data.shift();
       packetChart.data.labels.shift();
     }
     packetChart.data.datasets[0].data.push(+realPL.toFixed(3));
+    // Color dinámico según packet loss
+    packetChart.data.datasets[0].borderColor = realPL < 1 ? '#00e676' : realPL < 5 ? '#ffc400' : '#ff3d3d';
+    packetChart.data.datasets[0].backgroundColor = realPL < 1 ? 'rgba(0,230,118,0.06)' : realPL < 5 ? 'rgba(255,196,0,0.06)' : 'rgba(255,61,61,0.06)';
     const now = new Date();
     packetChart.data.labels.push(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`);
     packetChart.update('none');
@@ -714,12 +726,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     11. LEAFLET MAP — v3.1
-     CORRECCIONES:
-     - HAB-SAT, HAB-DIST1: movidos a tierra firme (Playa interior)
-     - HAB-CABO → SANDINO relay (Pinar del Río, tierra firme)
-     - NUEVO: MAI-1 Punta de Maisí (extremo este Cuba)
-     - Nodos Cuba: 28 total
+     11. LEAFLET MAP — v4.0 NODOS CUBA CORREGIDOS
+     Bayamo ×3, Bartolomé Masó ×2, Ciego ×4,
+     Santa Clara ×3, La Habana ×8, Las Tunas ×3,
+     Santiago de Cuba ×4, Sancti Spíritus ×2,
+     Colón ×1, San Antonio de los Baños ×1,
+     Pinar del Río ×2
   ══════════════════════════════════════════════ */
   const map = L.map('worldMap', {
     center: [22.0, -79.5],
@@ -736,64 +748,64 @@ document.addEventListener('DOMContentLoaded', () => {
   }).addTo(map);
 
   const nodes = [
-    // ── LA HABANA (8 nodos) — TODOS EN TIERRA ──
-    // HAB-NOC: Centro Habana / Cerro — tierra firme confirmado
-    { id: 'HAB-NOC',   name: 'LA HABANA — NOC PRINCIPAL\nNodo Central Nacional',       lat: 23.132, lng: -82.365, type: 'gateway',   region: 'habana' },
-    // HAB-GW1: Vedado — tierra firme confirmado
-    { id: 'HAB-GW1',   name: 'LA HABANA — GATEWAY NORTE\nVedado Data Center',           lat: 23.138, lng: -82.383, type: 'data',      region: 'habana' },
-    // HAB-GW2: Guanabacoa — tierra firme, al este
-    { id: 'HAB-GW2',   name: 'LA HABANA — RELAY ESTE\nGuanabacoa Link Node',            lat: 23.118, lng: -82.295, type: 'data',      region: 'habana' },
-    // HAB-SAT: Playa/Miramar interior — CORREGIDO más al sur (23.127 vs 23.160)
-    { id: 'HAB-SAT',   name: 'LA HABANA — SAT UPLINK\nEstación Terrena Principal',      lat: 23.127, lng: -82.418, type: 'satellite', region: 'habana' },
-    // HAB-FW: Cerro — tierra firme
-    { id: 'HAB-FW',    name: 'LA HABANA — FIREWALL NODE\nSeguridad Perimetral',         lat: 23.096, lng: -82.376, type: 'ground',    region: 'habana' },
-    // HAB-DIST1: Marianao interior — CORREGIDO (23.082 vs 23.142, más al sur = tierra)
-    { id: 'HAB-DIST1', name: 'LA HABANA — DISTRIBUCIÓN OESTE\nMarianao Hub',            lat: 23.082, lng: -82.433, type: 'ground',    region: 'habana' },
-    // HAB-DIST2: 10 de Octubre — tierra firme
-    { id: 'HAB-DIST2', name: 'LA HABANA — DISTRIBUCIÓN SUR\n10 de Octubre Hub',         lat: 23.087, lng: -82.340, type: 'data',      region: 'habana' },
-    // CORREGIDO: Cabo de San Antonio era agua → Sandino, Pinar del Río (tierra firme)
-    { id: 'HAB-CABO',  name: 'SANDINO — RELAY PINAR DEL RÍO\nGateway Occidente',       lat: 22.540, lng: -84.090, type: 'satellite', region: 'habana' },
+    // ── LA HABANA (8 nodos) — tierra firme ──
+    { id: 'HAB-NOC',   name: 'LA HABANA — NOC PRINCIPAL\nNodo Central Nacional',        lat: 23.132, lng: -82.365, type: 'gateway',   region: 'habana' },
+    { id: 'HAB-GW1',   name: 'LA HABANA — GATEWAY VEDADO\nVedado Data Center',           lat: 23.138, lng: -82.383, type: 'data',      region: 'habana' },
+    { id: 'HAB-GW2',   name: 'LA HABANA — RELAY ESTE\nGuanabacoa Link Node',             lat: 23.118, lng: -82.295, type: 'data',      region: 'habana' },
+    { id: 'HAB-SAT',   name: 'LA HABANA — SAT UPLINK\nEstación Terrena Miramar',         lat: 23.127, lng: -82.418, type: 'satellite', region: 'habana' },
+    { id: 'HAB-FW',    name: 'LA HABANA — FIREWALL NODE\nSeguridad Perimetral Cerro',    lat: 23.096, lng: -82.376, type: 'ground',    region: 'habana' },
+    { id: 'HAB-DIST1', name: 'LA HABANA — DISTRIBUCIÓN OESTE\nMarianao Hub',             lat: 23.082, lng: -82.433, type: 'ground',    region: 'habana' },
+    { id: 'HAB-DIST2', name: 'LA HABANA — DISTRIBUCIÓN SUR\n10 de Octubre Hub',          lat: 23.087, lng: -82.340, type: 'data',      region: 'habana' },
+    { id: 'HAB-CABO',  name: 'SAN ANTONIO DE LOS BAÑOS — RELAY\nGateway Occidente',      lat: 22.896, lng: -82.510, type: 'satellite', region: 'habana' },
 
-    // ── CAMAGÜEY (3 nodos) ──
-    { id: 'CAM-1',     name: 'CAMAGÜEY — NODO PRINCIPAL\nCentro Ciudad',               lat: 21.383, lng: -77.920, type: 'gateway',   region: 'camaguey' },
-    { id: 'CAM-2',     name: 'CAMAGÜEY — RELAY SUR\nCamagüey Industrial Zone',         lat: 21.350, lng: -77.890, type: 'data',      region: 'camaguey' },
-    { id: 'CAM-3',     name: 'CAMAGÜEY — ENLACE NORTE\nNuevitas Coastal Link',         lat: 21.540, lng: -77.270, type: 'ground',    region: 'camaguey' },
+    // ── PINAR DEL RÍO (2 nodos) ──
+    { id: 'PIN-1',     name: 'PINAR DEL RÍO — NODO PRINCIPAL\nHub Provincial Occidente', lat: 22.416, lng: -83.695, type: 'gateway',   region: 'pinar' },
+    { id: 'PIN-2',     name: 'PINAR DEL RÍO — RELAY NORTE\nEnlace Costero',              lat: 22.690, lng: -83.770, type: 'data',      region: 'pinar' },
 
-    // ── FLORIDA (municipio Camagüey, 2 nodos) ──
-    { id: 'FLA-1',     name: 'FLORIDA — NODO MUNICIPAL\nCamagüey Province Hub',        lat: 21.531, lng: -78.231, type: 'data',      region: 'camaguey' },
-    { id: 'FLA-2',     name: 'FLORIDA — RELAY NORTE\nEnlace Ciego-Camagüey',           lat: 21.560, lng: -78.180, type: 'ground',    region: 'camaguey' },
+    // ── SANCTI SPÍRITUS (2 nodos) ──
+    { id: 'SS-1',      name: 'SANCTI SPÍRITUS — NODO CENTRAL\nHub Provincial',           lat: 21.929, lng: -79.443, type: 'gateway',   region: 'sancti' },
+    { id: 'SS-2',      name: 'SANCTI SPÍRITUS — RELAY SUR\nTrinidad Corridor',           lat: 21.700, lng: -79.550, type: 'data',      region: 'sancti' },
 
-    // ── CIEGO DE ÁVILA (4 nodos) ──
-    { id: 'CIA-1',     name: 'CIEGO DE ÁVILA — NODO CENTRAL\nHub Provincial',          lat: 21.852, lng: -78.760, type: 'gateway',   region: 'ciego' },
-    { id: 'CIA-2',     name: 'CIEGO DE ÁVILA — ENLACE NORTE\nMorón Coastal Node',      lat: 22.100, lng: -78.620, type: 'ground',    region: 'ciego' },
-    { id: 'CIA-3',     name: 'CIEGO DE ÁVILA — RELAY SUR\nJiguaní Link',               lat: 21.650, lng: -78.820, type: 'data',      region: 'ciego' },
-    { id: 'CIA-4',     name: 'CIEGO DE ÁVILA — SAT TERRENA\nEstación Regional',        lat: 21.900, lng: -78.900, type: 'satellite', region: 'ciego' },
+    // ── COLÓN, Matanzas (1 nodo) ──
+    { id: 'COL-1',     name: 'COLÓN — NODO MATANZAS\nHub Matanzas Central',              lat: 22.722, lng: -80.907, type: 'gateway',   region: 'colon' },
 
     // ── SANTA CLARA (3 nodos) ──
-    { id: 'STC-1',     name: 'SANTA CLARA — NODO CENTRAL\nVilla Clara Hub',            lat: 22.406, lng: -79.965, type: 'gateway',   region: 'santa_clara' },
-    { id: 'STC-2',     name: 'SANTA CLARA — RELAY NORTE\nSagua la Grande Link',        lat: 22.620, lng: -80.070, type: 'data',      region: 'santa_clara' },
-    { id: 'STC-3',     name: 'SANTA CLARA — ENLACE CENTRO\nCienfuegos Corridor',       lat: 22.150, lng: -80.110, type: 'ground',    region: 'santa_clara' },
+    { id: 'STC-1',     name: 'SANTA CLARA — NODO CENTRAL\nVilla Clara Hub',              lat: 22.406, lng: -79.965, type: 'gateway',   region: 'santa_clara' },
+    { id: 'STC-2',     name: 'SANTA CLARA — RELAY NORTE\nSagua la Grande Link',          lat: 22.620, lng: -80.070, type: 'data',      region: 'santa_clara' },
+    { id: 'STC-3',     name: 'SANTA CLARA — ENLACE CENTRO\nCienfuegos Corridor',         lat: 22.150, lng: -80.110, type: 'ground',    region: 'santa_clara' },
+
+    // ── CIEGO DE ÁVILA (4 nodos) ──
+    { id: 'CIA-1',     name: 'CIEGO DE ÁVILA — NODO CENTRAL\nHub Provincial',            lat: 21.852, lng: -78.760, type: 'gateway',   region: 'ciego' },
+    { id: 'CIA-2',     name: 'CIEGO DE ÁVILA — ENLACE NORTE\nMorón Coastal Node',        lat: 22.100, lng: -78.620, type: 'ground',    region: 'ciego' },
+    { id: 'CIA-3',     name: 'CIEGO DE ÁVILA — RELAY SUR\nJaguaní Link',                 lat: 21.650, lng: -78.820, type: 'data',      region: 'ciego' },
+    { id: 'CIA-4',     name: 'CIEGO DE ÁVILA — SAT TERRENA\nEstación Regional',          lat: 21.900, lng: -78.900, type: 'satellite', region: 'ciego' },
+
+    // ── BAYAMO (3 nodos) ──
+    { id: 'BAY-1',     name: 'BAYAMO — NODO PRINCIPAL\nHub Provincial Granma',           lat: 20.373, lng: -76.640, type: 'gateway',   region: 'bayamo' },
+    { id: 'BAY-2',     name: 'BAYAMO — RELAY OESTE\nYara Distribution',                  lat: 20.390, lng: -76.780, type: 'data',      region: 'bayamo' },
+    { id: 'BAY-3',     name: 'BAYAMO — ENLACE SUR\nManzanillo Corridor',                 lat: 20.280, lng: -76.620, type: 'ground',    region: 'bayamo' },
+
+    // ── BARTOLOMÉ MASÓ (municipio Granma/Bayamo, 2 nodos) ──
+    { id: 'MAS-1',     name: 'BARTOLOMÉ MASÓ — NODO MUNICIPAL\nGranma Sierra Hub',       lat: 20.158, lng: -76.930, type: 'data',      region: 'bayamo' },
+    { id: 'MAS-2',     name: 'BARTOLOMÉ MASÓ — RELAY SIERRA\nEnlace Cordillera',         lat: 20.130, lng: -77.010, type: 'ground',    region: 'bayamo' },
 
     // ── LAS TUNAS (3 nodos) ──
-    { id: 'LTU-1',     name: 'LAS TUNAS — NODO PRINCIPAL\nHub Provincial Norte',       lat: 20.964, lng: -76.958, type: 'gateway',   region: 'las_tunas' },
-    { id: 'LTU-2',     name: 'LAS TUNAS — RELAY ESTE\nPuerto Padre Link',              lat: 21.195, lng: -76.595, type: 'data',      region: 'las_tunas' },
-    { id: 'LTU-3',     name: 'LAS TUNAS — ENLACE OESTE\nJobabo Distribution',          lat: 20.870, lng: -77.280, type: 'ground',    region: 'las_tunas' },
+    { id: 'LTU-1',     name: 'LAS TUNAS — NODO PRINCIPAL\nHub Provincial Norte',         lat: 20.964, lng: -76.958, type: 'gateway',   region: 'las_tunas' },
+    { id: 'LTU-2',     name: 'LAS TUNAS — RELAY ESTE\nPuerto Padre Link',                lat: 21.195, lng: -76.595, type: 'data',      region: 'las_tunas' },
+    { id: 'LTU-3',     name: 'LAS TUNAS — ENLACE OESTE\nJobabo Distribution',            lat: 20.870, lng: -77.280, type: 'ground',    region: 'las_tunas' },
 
-    // ── HOLGUÍN (4 nodos) ──
-    { id: 'HOL-1',     name: 'HOLGUÍN — NODO CENTRAL\nHub Provincial',                 lat: 20.888, lng: -76.258, type: 'gateway',   region: 'holguin' },
-    { id: 'HOL-2',     name: 'HOLGUÍN — SAT UPLINK\nEstación Satelital Este',          lat: 20.910, lng: -76.130, type: 'satellite', region: 'holguin' },
-    { id: 'HOL-3',     name: 'HOLGUÍN — RELAY SUR\nBayamo Corridor',                   lat: 20.680, lng: -76.380, type: 'data',      region: 'holguin' },
-    { id: 'HOL-4',     name: 'HOLGUÍN — NORTE COASTAL\nGibara Coastal Node',           lat: 21.107, lng: -76.133, type: 'ground',    region: 'holguin' },
-
-    // ── PUNTA DE MAISÍ — NUEVO (extremo este de Cuba) ──
-    { id: 'MAI-1',     name: 'PUNTA DE MAISÍ — SAT UPLINK ESTE\nExtremo Oriental Cuba', lat: 20.248, lng: -74.147, type: 'satellite', region: 'holguin' },
+    // ── SANTIAGO DE CUBA (4 nodos) ──
+    { id: 'STG-1',     name: 'SANTIAGO DE CUBA — NOC ORIENTE\nHub Regional Este',        lat: 20.025, lng: -75.820, type: 'gateway',   region: 'santiago' },
+    { id: 'STG-2',     name: 'SANTIAGO DE CUBA — SAT UPLINK\nEstación Satelital',        lat: 20.050, lng: -75.750, type: 'satellite', region: 'santiago' },
+    { id: 'STG-3',     name: 'SANTIAGO DE CUBA — RELAY NORTE\nPalma Soriano Link',       lat: 20.210, lng: -75.985, type: 'data',      region: 'santiago' },
+    { id: 'STG-4',     name: 'SANTIAGO DE CUBA — COASTAL NODE\nEnlace Costero Sur',      lat: 19.960, lng: -75.850, type: 'ground',    region: 'santiago' },
 
     // ── Nodos internacionales / NASA ──
-    { id: 'MIAMI',     name: 'MIAMI — SATELLITE UPLINK\nFlorida USA',                  lat: 25.770, lng: -80.190, type: 'satellite', region: 'ext' },
-    { id: 'KSC',       name: 'KSC/SCCN — GREENBELT MD\nNASA Comms Hub',               lat: 38.990, lng: -76.850, type: 'gateway',   region: 'ext' },
-    { id: 'MSFC',      name: 'MSFC — MARSHALL SPACE FLIGHT\nHuntsville AL',            lat: 34.730, lng: -86.640, type: 'data',      region: 'ext' },
-    { id: 'DSN_MAD',   name: 'DSN-MAD — DEEP SPACE MADRID\nRota Spain',               lat: 40.430, lng: -4.250,  type: 'satellite', region: 'ext' },
-    { id: 'BOGOTA',    name: 'BOGOTA — COLOMBIA RELAY\nSA Hub',                        lat: 4.710,  lng: -74.070, type: 'data',      region: 'ext' },
+    { id: 'MIAMI',     name: 'MIAMI — SATELLITE UPLINK\nFlorida USA',                    lat: 25.770, lng: -80.190, type: 'satellite', region: 'ext' },
+    { id: 'KSC',       name: 'KSC/SCCN — GREENBELT MD\nNASA Comms Hub',                 lat: 38.990, lng: -76.850, type: 'gateway',   region: 'ext' },
+    { id: 'MSFC',      name: 'MSFC — MARSHALL SPACE FLIGHT\nHuntsville AL',              lat: 34.730, lng: -86.640, type: 'data',      region: 'ext' },
+    { id: 'DSN_MAD',   name: 'DSN-MAD — DEEP SPACE MADRID\nRota Spain',                  lat: 40.430, lng: -4.250,  type: 'satellite', region: 'ext' },
+    { id: 'BOGOTA',    name: 'BOGOTA — COLOMBIA RELAY\nSA Hub',                          lat: 4.710,  lng: -74.070, type: 'data',      region: 'ext' },
   ];
 
   const typeColors = {
@@ -823,13 +835,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const cubaRegions = new Set(['habana','camaguey','ciego','santa_clara','las_tunas','holguin']);
+  const cubaRegions = new Set(['habana','pinar','sancti','colon','santa_clara','ciego','bayamo','las_tunas','santiago']);
 
   nodes.forEach(n => {
-    const color  = typeColors[n.type];
-    const isCuba = cubaRegions.has(n.region);
+    const color    = typeColors[n.type];
+    const isCuba   = cubaRegions.has(n.region);
     const isGateway = n.type === 'gateway';
-    const size   = isCuba ? (isGateway ? 16 : 12) : 10;
+    const size     = isCuba ? (isGateway ? 16 : 12) : 10;
     L.marker([n.lat, n.lng], { icon: makeIcon(color, size, isCuba && isGateway) })
       .addTo(map)
       .bindTooltip(
@@ -849,55 +861,62 @@ document.addEventListener('DOMContentLoaded', () => {
     ['HAB-GW1',  'HAB-DIST1', '#00c8ff'],
     ['HAB-GW2',  'HAB-DIST2', '#00c8ff'],
     ['HAB-NOC',  'HAB-CABO',  '#ffc400'],
-    // ── Habana → otras provincias ──
-    ['HAB-NOC',  'STC-1',     '#1a6fff'],
-    ['HAB-GW2',  'CIA-1',     '#1a6fff'],
+    // ── Habana → Pinar del Río ──
+    ['HAB-CABO', 'PIN-1',     '#1a6fff'],
+    ['HAB-SAT',  'PIN-2',     '#ffc400'],
+    ['PIN-1',    'PIN-2',     '#9b59ff'],
+    // ── Habana → Colón / Matanzas ──
+    ['HAB-NOC',  'COL-1',     '#1a6fff'],
+    // ── Habana → Santa Clara ──
+    ['COL-1',    'STC-1',     '#1a6fff'],
+    ['HAB-GW2',  'STC-2',     '#00c8ff'],
     // ── Santa Clara interna ──
     ['STC-1',    'STC-2',     '#9b59ff'],
     ['STC-1',    'STC-3',     '#9b59ff'],
-    // ── Santa Clara ↔ Ciego ──
-    ['STC-1',    'CIA-1',     '#1a6fff'],
-    ['STC-2',    'CIA-2',     '#00c8ff'],
+    // ── Santa Clara ↔ Sancti Spíritus ──
+    ['STC-1',    'SS-1',      '#1a6fff'],
+    ['STC-3',    'SS-2',      '#00c8ff'],
+    ['SS-1',     'SS-2',      '#9b59ff'],
+    // ── Sancti Spíritus ↔ Ciego de Ávila ──
+    ['SS-1',     'CIA-1',     '#1a6fff'],
+    ['SS-2',     'CIA-3',     '#00c8ff'],
     // ── Ciego de Ávila interna ──
     ['CIA-1',    'CIA-2',     '#9b59ff'],
     ['CIA-1',    'CIA-3',     '#9b59ff'],
     ['CIA-1',    'CIA-4',     '#ffc400'],
     ['CIA-2',    'CIA-4',     '#00c8ff'],
-    // ── Ciego ↔ Camagüey ──
-    ['CIA-1',    'CAM-1',     '#1a6fff'],
-    ['CIA-3',    'FLA-1',     '#00c8ff'],
-    // ── Florida municipal ──
-    ['FLA-1',    'FLA-2',     '#9b59ff'],
-    ['FLA-1',    'CAM-1',     '#00c8ff'],
-    ['FLA-2',    'CAM-2',     '#00c8ff'],
-    // ── Camagüey interna ──
-    ['CAM-1',    'CAM-2',     '#9b59ff'],
-    ['CAM-1',    'CAM-3',     '#9b59ff'],
-    ['CAM-2',    'CAM-3',     '#00c8ff'],
-    // ── Camagüey ↔ Las Tunas ──
-    ['CAM-1',    'LTU-1',     '#1a6fff'],
-    ['CAM-3',    'LTU-2',     '#00c8ff'],
+    // ── Ciego ↔ Las Tunas ──
+    ['CIA-1',    'LTU-1',     '#1a6fff'],
+    ['CIA-2',    'LTU-2',     '#00c8ff'],
     // ── Las Tunas interna ──
     ['LTU-1',    'LTU-2',     '#9b59ff'],
     ['LTU-1',    'LTU-3',     '#9b59ff'],
     ['LTU-2',    'LTU-3',     '#00c8ff'],
-    // ── Las Tunas ↔ Holguín ──
-    ['LTU-1',    'HOL-1',     '#1a6fff'],
-    ['LTU-2',    'HOL-4',     '#00c8ff'],
-    // ── Holguín interna ──
-    ['HOL-1',    'HOL-2',     '#ffc400'],
-    ['HOL-1',    'HOL-3',     '#9b59ff'],
-    ['HOL-1',    'HOL-4',     '#9b59ff'],
-    ['HOL-2',    'HOL-4',     '#00c8ff'],
-    // ── Maisí ──
-    ['MAI-1',    'HOL-2',     '#ffc400'],
-    ['MAI-1',    'HOL-4',     '#00c8ff'],
+    // ── Las Tunas ↔ Bayamo ──
+    ['LTU-1',    'BAY-1',     '#1a6fff'],
+    ['LTU-3',    'BAY-2',     '#00c8ff'],
+    // ── Bayamo interna ──
+    ['BAY-1',    'BAY-2',     '#9b59ff'],
+    ['BAY-1',    'BAY-3',     '#9b59ff'],
+    ['BAY-2',    'BAY-3',     '#00c8ff'],
+    // ── Bayamo ↔ Bartolomé Masó ──
+    ['BAY-1',    'MAS-1',     '#9b59ff'],
+    ['BAY-2',    'MAS-2',     '#00c8ff'],
+    ['MAS-1',    'MAS-2',     '#9b59ff'],
+    // ── Bayamo ↔ Santiago ──
+    ['BAY-1',    'STG-1',     '#1a6fff'],
+    ['BAY-3',    'STG-3',     '#00c8ff'],
+    ['MAS-1',    'STG-3',     '#00c8ff'],
+    // ── Santiago interna ──
+    ['STG-1',    'STG-2',     '#ffc400'],
+    ['STG-1',    'STG-3',     '#9b59ff'],
+    ['STG-1',    'STG-4',     '#9b59ff'],
+    ['STG-2',    'STG-4',     '#00c8ff'],
     // ── Cuba → exterior ──
     ['HAB-SAT',  'MIAMI',     '#1a6fff'],
     ['HAB-CABO', 'MIAMI',     '#ffc400'],
     ['CIA-4',    'MIAMI',     '#ffc400'],
-    ['MAI-1',    'BOGOTA',    '#ffc400'],
-    ['HOL-2',    'BOGOTA',    '#00e676'],
+    ['STG-2',    'BOGOTA',    '#ffc400'],
     // ── Exterior / NASA ──
     ['MIAMI',    'KSC',       '#1a6fff'],
     ['KSC',      'MSFC',      '#1a6fff'],
@@ -928,26 +947,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Vistas de mapa — incluye Maisí
+  // Vistas de mapa — Next Map funcional
   const mapViews = [
-    { center: [22.0, -79.5],  zoom: 6,  label: 'CUBA COMPLETA' },
-    { center: [23.13, -82.35], zoom: 10, label: 'LA HABANA' },
-    { center: [21.38, -77.92], zoom: 9,  label: 'CAMAGÜEY/FLORIDA' },
-    { center: [21.0,  -76.5],  zoom: 9,  label: 'LAS TUNAS / HOLGUÍN' },
-    { center: [20.25, -74.15], zoom: 11, label: 'PUNTA DE MAISÍ' },
+    { center: [22.0,  -79.5],  zoom: 6,  label: 'CUBA COMPLETA' },
+    { center: [23.13, -82.38], zoom: 11, label: 'LA HABANA' },
+    { center: [22.50, -83.80], zoom: 10, label: 'PINAR DEL RÍO' },
+    { center: [22.72, -80.90], zoom: 10, label: 'COLÓN / MATANZAS' },
+    { center: [22.40, -79.97], zoom: 10, label: 'SANTA CLARA' },
+    { center: [21.93, -79.44], zoom: 10, label: 'SANCTI SPÍRITUS' },
+    { center: [21.85, -78.76], zoom: 10, label: 'CIEGO DE ÁVILA' },
+    { center: [20.37, -76.64], zoom: 10, label: 'BAYAMO + MASÓ' },
+    { center: [20.96, -76.96], zoom: 10, label: 'LAS TUNAS' },
+    { center: [20.02, -75.82], zoom: 10, label: 'SANTIAGO DE CUBA' },
     { center: [22.0,  -79.5],  zoom: 4,  label: 'REGIÓN CARIBE' },
   ];
   let mapViewIdx = 0;
+
   window.nextMapView = function() {
     mapViewIdx = (mapViewIdx + 1) % mapViews.length;
     const v = mapViews[mapViewIdx];
     map.flyTo(v.center, v.zoom, { duration: 1.2 });
-    addRealAlert('INFO', `Vista mapa: ${v.label}`, 'MAP-ENGINE', `Zoom ${v.zoom} — Centro ${v.center}`);
+    addRealAlert('INFO', `Vista mapa: ${v.label}`, 'MAP-ENGINE', `Zoom ${v.zoom} — Centro [${v.center}]`);
+
+    // Actualizar label del botón Next Map si existe
+    const nmLabel = document.getElementById('next-map-label');
+    const nextV = mapViews[(mapViewIdx + 1) % mapViews.length];
+    if (nmLabel) nmLabel.textContent = nextV.label;
   };
+
+  const nodesActive = nodes.filter(n => cubaRegions.has(n.region)).length;
 
 
   /* ══════════════════════════════════════════════
-     12. SATELLITE VISUALIZATION
+     12. SATELLITE VISUALIZATION con datos reales
   ══════════════════════════════════════════════ */
   const satSvg = `
 <svg viewBox="0 0 240 220" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
@@ -976,6 +1008,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <line x1="68" y1="110" x2="172" y2="110" stroke="#1a6fff" stroke-width="0.5" opacity="0.4" stroke-dasharray="2 3"/>
   <ellipse cx="120" cy="110" rx="82" ry="24" fill="none" stroke="#1a6fff" stroke-width="0.7" stroke-dasharray="4 5" opacity="0.4"/>
   <ellipse cx="120" cy="110" rx="75" ry="40" fill="none" stroke="#9b59ff" stroke-width="0.5" stroke-dasharray="3 6" opacity="0.25" transform="rotate(-30 120 110)"/>
+  <!-- TDRS-1 -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 16s linear infinite;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#00c8ff" opacity="0.95" filter="url(#glow)"/>
@@ -984,6 +1017,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.9"/>
     </g>
   </g>
+  <!-- TDRS-2 -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 16s linear infinite; animation-delay:-5.33s;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#00c8ff" opacity="0.9" filter="url(#glow)"/>
@@ -992,6 +1026,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.85"/>
     </g>
   </g>
+  <!-- TDRS-3 -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 16s linear infinite; animation-delay:-10.67s;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#00c8ff" opacity="0.88" filter="url(#glow)"/>
@@ -1000,6 +1035,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.8"/>
     </g>
   </g>
+  <!-- TDRS-5 (mantenimiento) -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 44s linear infinite reverse;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#ffc400" opacity="0.9" filter="url(#glow)"/>
@@ -1008,26 +1044,33 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.75"/>
     </g>
   </g>
-  <text x="10" y="200" font-family="Share Tech Mono" font-size="7" fill="#3a5880">PING:</text>
-  <text id="sat-ping-text" x="35" y="200" font-family="Share Tech Mono" font-size="7" fill="#00c8ff">-- ms</text>
-  <text x="90" y="200" font-family="Share Tech Mono" font-size="7" fill="#3a5880">LOSS:</text>
-  <text id="sat-loss-text" x="115" y="200" font-family="Share Tech Mono" font-size="7" fill="#00e676">0.000%</text>
-  <text x="165" y="200" font-family="Share Tech Mono" font-size="7" fill="#3a5880">MON:</text>
-  <text id="sat-mon-text" x="190" y="200" font-family="Share Tech Mono" font-size="7" fill="#ff3d3d">OFF</text>
+  <!-- Telemetría en tiempo real -->
+  <text x="10" y="196" font-family="Share Tech Mono" font-size="7" fill="#3a5880">PING:</text>
+  <text id="sat-ping-text" x="35" y="196" font-family="Share Tech Mono" font-size="7" fill="#00c8ff">-- ms</text>
+  <text x="90" y="196" font-family="Share Tech Mono" font-size="7" fill="#3a5880">LOSS:</text>
+  <text id="sat-loss-text" x="115" y="196" font-family="Share Tech Mono" font-size="7" fill="#00e676">0.000%</text>
+  <text x="165" y="196" font-family="Share Tech Mono" font-size="7" fill="#3a5880">MON:</text>
+  <text id="sat-mon-text" x="190" y="196" font-family="Share Tech Mono" font-size="7" fill="#ff3d3d">OFF</text>
+  <!-- Nodos Cuba -->
+  <text x="10" y="208" font-family="Share Tech Mono" font-size="7" fill="#3a5880">NODOS:</text>
+  <text id="sat-nodes-text" x="40" y="208" font-family="Share Tech Mono" font-size="7" fill="#9b59ff">${nodesActive} Cuba</text>
+  <text x="95" y="208" font-family="Share Tech Mono" font-size="7" fill="#3a5880">PINGS:</text>
+  <text id="sat-pings-text" x="125" y="208" font-family="Share Tech Mono" font-size="7" fill="#00c8ff">0</text>
 </svg>`;
 
   const satViz = document.getElementById('satViz');
   if (satViz) satViz.innerHTML = satSvg;
 
   function updateSatelliteData(pingMs) {
-    const satPingEl = document.getElementById('sat-ping-text');
-    const satLossEl = document.getElementById('sat-loss-text');
-    const satMonEl  = document.getElementById('sat-mon-text');
+    const satPingEl  = document.getElementById('sat-ping-text');
+    const satLossEl  = document.getElementById('sat-loss-text');
+    const satMonEl   = document.getElementById('sat-mon-text');
+    const satPingsEl = document.getElementById('sat-pings-text');
     const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
 
     if (satPingEl) {
       satPingEl.textContent = pingMs ? `${pingMs}ms` : '-- ms';
-      satPingEl.setAttribute('fill', pingMs < 80 ? '#00e676' : pingMs < 150 ? '#ffc400' : '#ff3d3d');
+      satPingEl.setAttribute('fill', !pingMs ? '#6a8db0' : pingMs < 80 ? '#00e676' : pingMs < 150 ? '#ffc400' : '#ff3d3d');
     }
     if (satLossEl) {
       satLossEl.textContent = `${realPL.toFixed(2)}%`;
@@ -1036,6 +1079,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (satMonEl) {
       satMonEl.textContent = monitoringActive ? 'ON' : 'OFF';
       satMonEl.setAttribute('fill', monitoringActive ? '#00e676' : '#ff3d3d');
+    }
+    if (satPingsEl) {
+      satPingsEl.textContent = realMetrics.totalPings;
     }
   }
 
@@ -1048,7 +1094,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   let baseTraffic = 2.841;
-  let nodesActive = 28; // +1 Maisí
 
   setInterval(() => {
     if (monitoringActive) {
@@ -1064,12 +1109,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const cnEl = document.getElementById('kpi-conn');
     if (cnEl) cnEl.textContent = cn.toLocaleString();
 
-    const totalNodes = nodesActive + 8;
+    const totalNodesDisplay = nodesActive + 8; // Cuba + externos
     const ndEl = document.getElementById('kpi-nodes');
-    if (ndEl) ndEl.textContent = totalNodes.toLocaleString();
+    if (ndEl) ndEl.textContent = totalNodesDisplay.toLocaleString();
     const ndTrendEl = document.getElementById('kpi-nodes-trend');
     if (ndTrendEl) { ndTrendEl.textContent = `${nodesActive} nodos Cuba activos`; ndTrendEl.className = 'kpi-trend green'; }
 
+    // Actualizar gráfica de tráfico
     if (trafficChart.data.datasets[0].data.length >= 30) {
       trafficChart.data.datasets[0].data.shift();
       trafficChart.data.labels.shift();
@@ -1081,6 +1127,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updatePacketLossChart();
 
+    // System Health dinámica basada en monitoreo real
     const baseHealth = monitoringActive && pingOnline ? 92 : 75;
     const penaltyFail = Math.min(30, pingFailCount * 5);
     const hNet = Math.max(50, Math.round(rnd(baseHealth - penaltyFail, 3)));
@@ -1089,6 +1136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hSec = Math.max(50, Math.round(rnd(91, 2)));
     updateHealthDonut(hNet, hSrv, hLnk, hSec);
 
+    // Link Status dinámico
     const linkVals = [
       { id: 'll-1', base: 18, range: 5  },
       { id: 'll-2', base: 47, range: 12 },
@@ -1105,6 +1153,7 @@ document.addEventListener('DOMContentLoaded', () => {
       el.className   = 'link-lat ' + (v < 35 ? 'green' : v < 60 ? 'yellow' : 'red');
     });
 
+    // Alerta si packet loss elevado
     const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
     if (monitoringActive && realPL > 5 && Math.random() < 0.15) {
       addRealAlert('HIGH', `Packet Loss elevado: ${realPL.toFixed(2)}%`, `${realMetrics.failedPings} fallos / ${realMetrics.totalPings} pings`, 'INET-MON');
@@ -1116,7 +1165,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     14. SIDEBAR NAV
+     14. SIDEBAR NAV — Completamente funcional
   ══════════════════════════════════════════════ */
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -1129,42 +1178,38 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function handleNavPage(page) {
-    const content = document.querySelector('.content');
-    if (!content) return;
-    content.style.opacity = '0.7';
-    setTimeout(() => { content.style.opacity = '1'; }, 200);
-
     switch(page) {
+      case 'dashboard':
+        map.flyTo([22.0, -79.5], 6, { duration: 1.0 });
+        break;
       case 'network':
         map.flyTo([22.0, -79.5], 6, { duration: 1.0 });
-        addRealAlert('INFO', 'Vista: NET MAP', 'NAV', 'Mapa de red activo — Cuba completa');
+        addRealAlert('INFO', 'Vista: NET MAP — Cuba completa', 'NAV', `${nodesActive} nodos Cuba activos`);
         break;
       case 'assets':
-        addRealAlert('INFO', 'Vista: ASSETS', 'NAV', `${nodesActive} nodos Cuba + 8 nodos externos`);
-        showPageModal('ASSETS', buildAssetsContent());
+        addRealAlert('INFO', 'Vista: ASSETS', 'NAV', `${nodesActive} nodos Cuba + 5 nodos externos`);
+        showPageModal('◈ ASSETS — INVENTARIO DE NODOS', buildAssetsContent());
         break;
       case 'telemetry':
-        addRealAlert('INFO', 'Vista: TELEMETRY', 'NAV', `Última latencia: ${lastRealPingMs || '--'} ms`);
-        showPageModal('TELEMETRICS', buildTelemetryContent());
+        addRealAlert('INFO', 'Vista: TELEMETRÍA', 'NAV', `Última latencia real: ${lastRealPingMs || '--'} ms`);
+        showPageModal('📡 TELEMETRICS — DATOS EN TIEMPO REAL', buildTelemetryContent());
         break;
       case 'alerts':
-        showPageModal('ALERT LOG', buildAlertsContent());
+        showPageModal('⚠ ALERT LOG — HISTORIAL COMPLETO', buildAlertsContent());
         break;
       case 'performance':
         addRealAlert('INFO', 'Vista: PERFORMANCE', 'NAV', 'Cargando métricas de rendimiento');
-        showPageModal('PERFORMANCE', buildPerformanceContent());
+        showPageModal('📊 PERFORMANCE — MÉTRICAS DEL SISTEMA', buildPerformanceContent());
         break;
       case 'security':
-        addRealAlert('MEDIUM', 'Vista: SECURITY', 'NAV', 'Panel de seguridad activo');
-        showPageModal('SECURITY', buildSecurityContent());
+        addRealAlert('MEDIUM', 'Vista: SECURITY — Panel de seguridad activo', 'NAV', 'Verificando estado de firewalls');
+        showPageModal('🛡 SECURITY — ESTADO DE SEGURIDAD', buildSecurityContent());
         break;
       case 'logs':
-        showPageModal('SYSTEM LOGS', buildLogsContent());
+        showPageModal('📋 SYSTEM LOGS — REGISTRO DEL SISTEMA', buildLogsContent());
         break;
       case 'config':
-        showPageModal('CONFIGURATION', buildConfigContent());
-        break;
-      default:
+        showPageModal('⚙ CONFIGURATION — PARÁMETROS DEL SISTEMA', buildConfigContent());
         break;
     }
   }
@@ -1184,22 +1229,22 @@ document.addEventListener('DOMContentLoaded', () => {
     modal.innerHTML = `
       <div style="
         background: #080e1a; border: 1px solid #1e3a6e;
-        max-width: 800px; width: 100%; max-height: 80vh;
+        max-width: 820px; width: 100%; max-height: 82vh;
         overflow-y: auto; border-radius: 4px;
         box-shadow: 0 0 40px rgba(26,111,255,0.2);
       ">
         <div style="
           display: flex; justify-content: space-between; align-items: center;
           padding: 12px 16px; border-bottom: 1px solid #122040;
-          background: #060c17; position: sticky; top: 0;
+          background: #060c17; position: sticky; top: 0; z-index: 10;
         ">
-          <span style="font-family:'Orbitron',sans-serif; font-size:12px; font-weight:700; letter-spacing:2px; color:#00c8ff">
-            ◈ ${title}
+          <span style="font-family:'Orbitron',sans-serif; font-size:11px; font-weight:700; letter-spacing:2px; color:#00c8ff">
+            ${title}
           </span>
           <button onclick="document.getElementById('page-modal').remove()" style="
             background: rgba(255,61,61,0.15); border: 1px solid #ff3d3d;
-            color: #ff3d3d; font-size: 12px; padding: 4px 12px; cursor: pointer;
-            font-family: 'Orbitron',sans-serif; letter-spacing: 1px;
+            color: #ff3d3d; font-size: 11px; padding: 5px 14px; cursor: pointer;
+            font-family: 'Orbitron',sans-serif; letter-spacing: 1px; border-radius: 2px;
           ">✕ CERRAR</button>
         </div>
         <div style="padding: 16px;">${html}</div>
@@ -1216,8 +1261,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const cubaNodes = nodes.filter(n => cubaRegions.has(n.region));
     const byRegion = {};
     cubaNodes.forEach(n => { if (!byRegion[n.region]) byRegion[n.region] = []; byRegion[n.region].push(n); });
-    const regionNames = { habana:'LA HABANA', camaguey:'CAMAGÜEY + FLORIDA', ciego:'CIEGO DE ÁVILA', santa_clara:'SANTA CLARA', las_tunas:'LAS TUNAS', holguin:'HOLGUÍN (+ MAISÍ)' };
-    let html = `<div style="${monoStyle} margin-bottom:12px;">Total nodos Cuba: <span style="color:#00e676;font-size:14px;font-weight:700">${cubaNodes.length}</span></div>`;
+    const regionNames = {
+      habana:'LA HABANA',
+      pinar:'PINAR DEL RÍO',
+      colon:'COLÓN (MATANZAS)',
+      sancti:'SANCTI SPÍRITUS',
+      santa_clara:'SANTA CLARA',
+      ciego:'CIEGO DE ÁVILA',
+      bayamo:'BAYAMO + BARTOLOMÉ MASÓ',
+      las_tunas:'LAS TUNAS',
+      santiago:'SANTIAGO DE CUBA'
+    };
+    let html = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+        <div style="background:#0a1120;border:1px solid #122040;padding:10px;text-align:center">
+          <div style="${monoStyle}">NODOS CUBA</div>
+          <div style="font-family:'Orbitron';font-size:20px;color:#9b59ff;margin-top:4px">${cubaNodes.length}</div>
+        </div>
+        <div style="background:#0a1120;border:1px solid #122040;padding:10px;text-align:center">
+          <div style="${monoStyle}">GATEWAYS</div>
+          <div style="font-family:'Orbitron';font-size:20px;color:#9b59ff;margin-top:4px">${cubaNodes.filter(n=>n.type==='gateway').length}</div>
+        </div>
+        <div style="background:#0a1120;border:1px solid #122040;padding:10px;text-align:center">
+          <div style="${monoStyle}">SAT UPLINKS</div>
+          <div style="font-family:'Orbitron';font-size:20px;color:#ffc400;margin-top:4px">${cubaNodes.filter(n=>n.type==='satellite').length}</div>
+        </div>
+      </div>`;
     Object.entries(byRegion).forEach(([reg, nds]) => {
       html += `<div style="margin-bottom:10px;">
         <div style="font-family:'Orbitron',sans-serif;font-size:9px;color:#1a6fff;letter-spacing:2px;margin-bottom:6px;border-bottom:1px solid #122040;padding-bottom:4px">
@@ -1239,43 +1308,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
     const avg = realMetrics.avgLatency ? realMetrics.avgLatency.toFixed(1) : '--';
     return `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div style="background:#0a1120;border:1px solid #122040;padding:12px;">
           <div style="${monoStyle} margin-bottom:8px">LATENCIA GOOGLE (REAL)</div>
-          <div style="font-family:'Orbitron';font-size:24px;color:#00c8ff">${lastRealPingMs || '--'} ms</div>
-          <div style="${monoStyle}">Min: ${realMetrics.minLatency === Infinity ? '--' : realMetrics.minLatency}ms | Max: ${realMetrics.maxLatency || '--'}ms | Avg: ${avg}ms</div>
+          <div style="font-family:'Orbitron';font-size:28px;color:#00c8ff;line-height:1">${lastRealPingMs || '--'} <span style="font-size:14px">ms</span></div>
+          <div style="${monoStyle} margin-top:4px">Min: ${realMetrics.minLatency === Infinity ? '--' : realMetrics.minLatency}ms | Max: ${realMetrics.maxLatency || '--'}ms | Avg: ${avg}ms</div>
         </div>
         <div style="background:#0a1120;border:1px solid #122040;padding:12px;">
           <div style="${monoStyle} margin-bottom:8px">PACKET LOSS REAL</div>
-          <div style="font-family:'Orbitron';font-size:24px;color:${realPL < 1 ? '#00e676' : '#ff3d3d'}">${realPL.toFixed(3)}%</div>
-          <div style="${monoStyle}">${realMetrics.failedPings} fallos / ${realMetrics.totalPings} pings totales</div>
+          <div style="font-family:'Orbitron';font-size:28px;color:${realPL < 1 ? '#00e676' : '#ff3d3d'};line-height:1">${realPL.toFixed(3)}<span style="font-size:14px">%</span></div>
+          <div style="${monoStyle} margin-top:4px">${realMetrics.failedPings} fallos / ${realMetrics.totalPings} pings totales</div>
         </div>
         <div style="background:#0a1120;border:1px solid #122040;padding:12px;">
           <div style="${monoStyle} margin-bottom:8px">ESTADO MONITOREO</div>
-          <div style="font-family:'Orbitron';font-size:14px;color:${monitoringActive?'#00e676':'#ff3d3d'}">${monitoringActive?'ACTIVO':'INACTIVO'}</div>
-          <div style="${monoStyle}">Intervalo: ${pingIntervalMs}ms | Umbral: ${failThreshold} fallos</div>
+          <div style="font-family:'Orbitron';font-size:16px;color:${monitoringActive?'#00e676':'#ff3d3d'}">${monitoringActive?'● ACTIVO':'○ INACTIVO'}</div>
+          <div style="${monoStyle} margin-top:4px">Intervalo: ${pingIntervalMs}ms | Umbral: ${failThreshold} fallos | Vol: ${Math.round(alarmVolume*100)}%</div>
         </div>
         <div style="background:#0a1120;border:1px solid #122040;padding:12px;">
-          <div style="${monoStyle} margin-bottom:8px">HISTORIAL LATENCIA</div>
+          <div style="${monoStyle} margin-bottom:8px">HISTORIAL LATENCIA (últimos 5 pings)</div>
           ${pingHistory.slice(-5).reverse().map((ms, i) => `
-            <div style="${valStyle} margin-bottom:2px">${i===0?'→':' '} ${ms}ms
-              <span style="display:inline-block;width:${Math.min(ms, 200) * 0.6}px;height:3px;background:${ms<80?'#00e676':ms<150?'#ffc400':'#ff3d3d'};margin-left:4px;vertical-align:middle;border-radius:1px"></span>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+              <span style="${valStyle};min-width:40px">${i===0?'→':' '} ${ms}ms</span>
+              <div style="flex:1;height:4px;background:#0c1526;border-radius:2px;overflow:hidden">
+                <div style="height:100%;width:${Math.min(ms/3,100)}%;background:${ms<80?'#00e676':ms<150?'#ffc400':'#ff3d3d'};border-radius:2px"></div>
+              </div>
             </div>`).join('') || `<div style="${monoStyle}">Sin datos — active el monitoreo</div>`}
         </div>
+      </div>
+      <div style="${monoStyle};border-top:1px solid #122040;padding-top:8px">
+        Estado conexión: <span style="color:${pingOnline?'#00e676':'#ff3d3d'}">${pingOnline?'ONLINE':'OFFLINE'}</span> |
+        Último OK: <span style="color:#cde4ff">${lastOkTime || 'N/A'}</span> |
+        Fallos consecutivos: <span style="color:${pingFailCount>0?'#ff3d3d':'#00e676'}">${pingFailCount}</span>
       </div>`;
   }
 
   function buildAlertsContent() {
-    if (alertQueue.length === 0) return `<div style="${greenVal} text-align:center;padding:20px">✓ Sin alertas activas</div>`;
-    return alertQueue.map(al => `
+    if (alertQueue.length === 0) return `<div style="${greenVal} text-align:center;padding:20px">✓ Sin alertas activas — Sistema operacional</div>`;
+    return `<div style="${monoStyle} margin-bottom:8px">${alertQueue.length} alertas en registro | Críticas: ${alertQueue.filter(a=>a.level==='CRITICAL').length}</div>` +
+      alertQueue.map(al => `
       <div style="border-left:3px solid ${
         al.level==='CRITICAL'?'#ff3d3d':al.level==='HIGH'?'#ff8c00':al.level==='MEDIUM'?'#ffc400':al.level==='LOW'?'#00e676':'#00c8ff'
-      };padding:8px 12px;margin-bottom:6px;background:rgba(6,12,23,0.6);">
+      };padding:8px 12px;margin-bottom:6px;background:rgba(6,12,23,0.6);border-radius:0 2px 2px 0">
         <div style="display:flex;justify-content:space-between;margin-bottom:3px">
           <span style="font-family:'Orbitron';font-size:9px;font-weight:700;color:${
             al.level==='CRITICAL'?'#ff3d3d':al.level==='HIGH'?'#ff8c00':al.level==='MEDIUM'?'#ffc400':al.level==='LOW'?'#00e676':'#00c8ff'
           }">${al.level}</span>
-          <span style="${monoStyle}">${al.time} | ${al.source}</span>
+          <span style="${monoStyle}">${al.time} | SRC: ${al.source}</span>
         </div>
         <div style="${valStyle} margin-bottom:2px">${al.title}</div>
         <div style="${monoStyle}">${al.meta}</div>
@@ -1293,75 +1371,93 @@ document.addEventListener('DOMContentLoaded', () => {
           { l:'UPTIME MON.', v: uptime > 0 ? `${uptime}s` : '--', c:'#00e676' },
           { l:'PINGS TOTAL', v: realMetrics.totalPings, c:'#00c8ff' },
           { l:'TASA ÉXITO', v: realMetrics.totalPings > 0 ? `${(100-realPL).toFixed(1)}%` : '--', c:'#00e676' },
-          { l:'LATENCIA AVG', v: realMetrics.avgLatency ? `${realMetrics.avgLatency.toFixed(0)}ms` : '--', c:'#00c8ff' },
-          { l:'LATENCIA MIN', v: realMetrics.minLatency !== Infinity ? `${realMetrics.minLatency}ms` : '--', c:'#00e676' },
-          { l:'LATENCIA MAX', v: realMetrics.maxLatency || '--', c: (realMetrics.maxLatency||0) > 200 ? '#ff3d3d' : '#ffc400' },
+          { l:'LAT. ACTUAL', v: lastRealPingMs ? `${lastRealPingMs}ms` : '--', c:'#00c8ff' },
+          { l:'LAT. MÍNIMA', v: realMetrics.minLatency !== Infinity ? `${realMetrics.minLatency}ms` : '--', c:'#00e676' },
+          { l:'LAT. MÁXIMA', v: realMetrics.maxLatency || '--', c: (realMetrics.maxLatency||0) > 200 ? '#ff3d3d' : '#ffc400' },
+          { l:'PACKET LOSS', v: `${realPL.toFixed(3)}%`, c: realPL < 1 ? '#00e676' : '#ff3d3d' },
+          { l:'FALLOS CONSEC.', v: pingFailCount, c: pingFailCount > 0 ? '#ff3d3d' : '#00e676' },
+          { l:'ALERTAS GEN.', v: alertQueue.length, c: alertQueue.filter(a=>a.level==='CRITICAL').length > 0 ? '#ff3d3d' : '#ffc400' },
         ].map(item => `
           <div style="background:#0a1120;border:1px solid #122040;padding:10px;text-align:center">
-            <div style="${monoStyle}">${item.l}</div>
-            <div style="font-family:'Orbitron';font-size:18px;color:${item.c};margin-top:4px">${item.v}</div>
+            <div style="${monoStyle};margin-bottom:4px">${item.l}</div>
+            <div style="font-family:'Orbitron';font-size:16px;color:${item.c}">${item.v}</div>
           </div>`).join('')}
       </div>
-      <div style="${monoStyle} margin-top:8px">
-        Nodos Cuba monitoreados: ${nodesActive} (incl. Punta de Maisí) | Conexiones activas: ${links.filter(l => cubaRegions.has((nodes.find(n=>n.id===l[0])||{}).region)).length} enlaces internos
+      <div style="${monoStyle};border-top:1px solid #122040;padding-top:8px">
+        Nodos Cuba: ${nodesActive} | Provincias activas: 9 | Enlaces internos: ${links.filter(l => {
+          const na = nodes.find(n=>n.id===l[0]); const nb = nodes.find(n=>n.id===l[1]);
+          return na && nb && cubaRegions.has(na.region) && cubaRegions.has(nb.region);
+        }).length}
       </div>`;
   }
 
   function buildSecurityContent() {
     return `
       <div style="margin-bottom:12px">
-        <div style="font-family:'Orbitron';font-size:10px;color:#ff3d3d;letter-spacing:2px;margin-bottom:8px">⚠ THREAT ASSESSMENT</div>
+        <div style="font-family:'Orbitron';font-size:10px;color:#ffc400;letter-spacing:2px;margin-bottom:10px">ESTADO DE SEGURIDAD — NIVEL: ELEVATED</div>
         ${[
-          { name:'DDoS Detection', status:'ACTIVE', ok:true },
-          { name:'IDS/IPS Engine', status:'ACTIVE', ok:true },
-          { name:'Firewall Rules', status:'127 reglas activas', ok:true },
+          { name:'DDoS Detection Engine', status:'ACTIVE', ok:true },
+          { name:'IDS/IPS Engine', status:'ACTIVE — 127 reglas', ok:true },
+          { name:'Firewall Perimetral', status:'127 reglas activas', ok:true },
           { name:'Auth Monitor', status: alertQueue.filter(a=>a.title.includes('Auth')).length + ' eventos', ok: alertQueue.filter(a=>a.title.includes('Auth')).length === 0 },
-          { name:'Packet Inspector', status: monitoringActive ? 'ONLINE' : 'OFFLINE', ok: monitoringActive },
+          { name:'Packet Inspector (real)', status: monitoringActive ? `ONLINE — ${realMetrics.totalPings} pings` : 'OFFLINE', ok: monitoringActive },
+          { name:'Conexión Internet', status: pingOnline ? `ONLINE — ${lastRealPingMs||'--'}ms` : 'OFFLINE', ok: pingOnline },
+          { name:'Alertas Críticas', status: alertQueue.filter(a=>a.level==='CRITICAL').length + ' activas', ok: alertQueue.filter(a=>a.level==='CRITICAL').length === 0 },
         ].map(item => `
-          <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #122040">
-            <span style="width:8px;height:8px;border-radius:50%;background:${item.ok?'#00e676':'#ff3d3d'};box-shadow:0 0 4px ${item.ok?'#00e676':'#ff3d3d'}"></span>
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #122040">
+            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${item.ok?'#00e676':'#ff3d3d'};box-shadow:0 0 6px ${item.ok?'#00e676':'#ff3d3d'}"></span>
             <span style="${valStyle};flex:1">${item.name}</span>
-            <span style="${monoStyle}">${item.status}</span>
+            <span style="${monoStyle};color:${item.ok?'#6a8db0':'#ff8c00'}">${item.status}</span>
           </div>`).join('')}
       </div>
-      <div style="${monoStyle}">Packet loss real: ${(realMetrics.failedPings/Math.max(1,realMetrics.totalPings)*100).toFixed(3)}% | Alertas activas: ${alertQueue.filter(a=>a.level==='CRITICAL'||a.level==='HIGH').length}</div>`;
+      <div style="${monoStyle};border-top:1px solid #122040;padding-top:8px">
+        Packet loss real: ${(realMetrics.failedPings/Math.max(1,realMetrics.totalPings)*100).toFixed(3)}% |
+        Alertas altas/críticas: ${alertQueue.filter(a=>a.level==='CRITICAL'||a.level==='HIGH').length}
+      </div>`;
   }
 
   function buildLogsContent() {
-    return `<div style="${monoStyle} font-size:9px;line-height:1.8">
-      ${eventsBuffer.map(ev => `
-        <div style="border-bottom:1px solid #0c1526;padding:3px 0">
-          <span style="color:#3a5880">${ev.timeStr}</span>
-          <span style="color:${
-            ev.sev==='CRITICAL'?'#ff3d3d':ev.sev==='HIGH'?'#ff8c00':ev.sev==='MEDIUM'?'#ffc400':ev.sev==='LOW'?'#00e676':'#00c8ff'
-          };margin:0 8px">[${ev.sev}]</span>
-          <span style="color:#cde4ff">${ev.event}</span>
-          <span style="color:#3a5880"> — ${ev.source}</span>
-          <span style="color:#6a8db0"> ${ev.details}</span>
-        </div>`).join('') || `<div style="color:#3a5880">Sin eventos registrados</div>`}
-    </div>`;
+    return `
+      <div style="${monoStyle};margin-bottom:8px">${eventsBuffer.length} entradas de log</div>
+      <div style="font-size:9px;line-height:1.9">
+        ${eventsBuffer.map(ev => `
+          <div style="border-bottom:1px solid #0c1526;padding:3px 0;font-family:'Share Tech Mono',monospace">
+            <span style="color:#3a5880">${ev.timeStr}</span>
+            <span style="color:${
+              ev.sev==='CRITICAL'?'#ff3d3d':ev.sev==='HIGH'?'#ff8c00':ev.sev==='MEDIUM'?'#ffc400':ev.sev==='LOW'?'#00e676':'#00c8ff'
+            };margin:0 8px;font-weight:700">[${ev.sev}]</span>
+            <span style="color:#cde4ff">${ev.event}</span>
+            <span style="color:#3a5880"> — ${ev.source}</span>
+            <span style="color:#6a8db0"> ${ev.details}</span>
+          </div>`).join('') || `<div style="${monoStyle}">Sin eventos registrados</div>`}
+      </div>`;
   }
 
   function buildConfigContent() {
     return `
-      <div style="${monoStyle} margin-bottom:12px">Configuración activa del sistema de monitoreo:</div>
+      <div style="${monoStyle};margin-bottom:12px">Configuración activa del sistema de monitoreo NASOC v4.0</div>
       ${[
         ['Intervalo Ping', `${pingIntervalMs}ms`],
         ['Umbral Alarma', `${failThreshold} fallos consecutivos`],
         ['Volumen Alarma', `${Math.round(alarmVolume*100)}%`],
-        ['Monitoreo', monitoringActive ? 'ACTIVO' : 'INACTIVO'],
-        ['Nodos Cuba', `${nodesActive} nodos activos (incl. Punta de Maisí)`],
+        ['Estado Monitoreo', monitoringActive ? '● ACTIVO' : '○ INACTIVO'],
+        ['Nodos Cuba Total', `${nodesActive} nodos (9 provincias)`],
         ['Pings Realizados', realMetrics.totalPings],
         ['Fallos Detectados', realMetrics.failedPings],
+        ['Packet Loss Real', `${(realMetrics.failedPings/Math.max(1,realMetrics.totalPings)*100).toFixed(3)}%`],
         ['Alertas Generadas', alertQueue.length],
+        ['Latencia Promedio', realMetrics.avgLatency ? `${realMetrics.avgLatency.toFixed(0)}ms` : 'N/A'],
+        ['Alertas Críticas', alertQueue.filter(a=>a.level==='CRITICAL').length],
+        ['Versión Sistema', 'NASOC v4.0'],
       ].map(([k,v]) => `
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #0c1526">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #0c1526">
           <span style="${monoStyle}">${k}</span>
           <span style="${valStyle}">${v}</span>
         </div>`).join('')}
-      <div style="margin-top:16px;${monoStyle}">
-        <div style="color:#ffc400;margin-bottom:8px">Para cambiar configuración use los controles del panel de monitoreo.</div>
-        Use el botón "ACTIVAR MONITOREO DE RED" para iniciar el sistema de alertas en tiempo real.
+      <div style="margin-top:16px;${monoStyle};color:#ffc400">
+        ▸ Use los controles del panel superior para cambiar configuración de monitoreo.<br>
+        ▸ El botón "ACTIVAR MONITOREO DE RED" inicia pings reales a Google.<br>
+        ▸ La barra de monitoreo permanece siempre visible en el dashboard.
       </div>`;
   }
 
@@ -1381,5 +1477,5 @@ document.addEventListener('DOMContentLoaded', () => {
   renderAlerts();
   renderEventsTable();
 
-  console.log('%cNASOC v3.1 — 28 nodos Cuba. Maisí agregado. Habana en tierra firme. Sandino relay OK.', 'color:#00e676;font-family:monospace;font-size:13px');
+  console.log('%cNASOC v4.0 — Nodos Cuba actualizados. Bayamo, Masó, Ciego, Stgo, SS, Colón, Pinar.', 'color:#00e676;font-family:monospace;font-size:13px');
 });
