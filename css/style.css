@@ -71,6 +71,14 @@ a:hover { color: #fff; }
   0%,100% { box-shadow: 0 0 0 0 rgba(0,230,118,0.4); }
   50%     { box-shadow: 0 0 0 8px rgba(0,230,118,0); }
 }
+
+/* ── Pulso del borde activo — aplicado SOLO al pseudo-elemento,
+      nunca al contenedor principal para no interferir con fadeInUp ── */
+@keyframes mon-bar-pulse {
+  0%,100% { opacity: 1; }
+  50%     { opacity: 0.55; }
+}
+
 @keyframes spin-orbit {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
@@ -92,6 +100,7 @@ a:hover { color: #fff; }
   50%     { box-shadow: 0 0 0 10px rgba(0,230,118,0); }
 }
 
+/* ── animate-in: opacity 0 → 1 con forwards para que quede visible ── */
 .animate-in {
   opacity: 0;
   animation: fadeInUp 0.4s ease forwards;
@@ -406,7 +415,16 @@ a:hover { color: #fff; }
   min-width: 0;
 }
 
-/* ═══════════════ MONITORING CONTROL PANEL ═══════════════ */
+/* ═══════════════ MONITORING CONTROL PANEL ═══════════════
+   CORRECCIÓN CRÍTICA:
+   - Se elimina "overflow: hidden" del contenedor principal
+     para que el box-shadow animado no cause colapso de layout.
+   - El efecto de pulso activo se implementa SOLO en ::after
+     (pseudo-elemento hijo independiente), de modo que nunca
+     interfiere con la animación fadeInUp del contenedor.
+   - El contenedor NUNCA tiene "animation" propia más allá
+     del fadeInUp inicial (que ya terminó con forwards).
+═══════════════════════════════════════════════════════ */
 .monitoring-bar {
   background: var(--bg-panel);
   border: 1px solid var(--border-bright);
@@ -416,21 +434,39 @@ a:hover { color: #fff; }
   gap: 12px;
   flex-wrap: wrap;
   position: relative;
-  overflow: hidden;
+  /* SIN overflow:hidden — evita colapso por box-shadow animado */
 }
+
+/* Línea decorativa superior (siempre visible) */
 .monitoring-bar::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  pointer-events: none;
 }
-.monitoring-bar.active-monitoring {
-  border-color: var(--accent-green);
-  animation: pulse-green 2s ease infinite;
+
+/* Pulso de borde activo — pseudo-elemento independiente.
+   Solo aparece cuando la barra está activa.
+   Al estar en ::after (no en el elemento raíz), NO reinicia
+   la animación fadeInUp del contenedor. */
+.monitoring-bar::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid transparent;
+  pointer-events: none;
+  transition: border-color 0.4s ease;
 }
+
 .monitoring-bar.active-monitoring::before {
   background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+}
+
+.monitoring-bar.active-monitoring::after {
+  border-color: var(--accent-green);
+  animation: mon-bar-pulse 2s ease infinite;
 }
 
 .mon-btn {
@@ -748,7 +784,7 @@ a:hover { color: #fff; }
   width: 100% !important;
 }
 
-/* Protocol donut — FIXED: flex layout that won't overflow */
+/* Protocol donut — FIXED: flex layout que no desborda */
 .protocol-inner {
   display: flex;
   align-items: center;
@@ -854,7 +890,7 @@ a:hover { color: #fff; }
 .sat-status.green  { color: var(--accent-green); }
 .sat-status.yellow { color: var(--accent-yellow); }
 
-/* Satellite SVG animation keyframes (inline style uses spin-orbit) */
+/* Satellite SVG animation keyframes */
 @keyframes spin-orbit-sat {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
