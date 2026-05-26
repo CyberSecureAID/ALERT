@@ -1,13 +1,10 @@
 /* ═══════════════════════════════════════════════
-   NASOC – Main JS  |  v3.0
-   Correcciones completas:
-   - Barra monitoreo SIEMPRE visible
-   - Datos reales de red
-   - Nodos Cuba expandidos (Camagüey ×3, Florida-Ciego ×2, Ciego ×4, Santa Clara ×3, Habana ×8, Las Tunas ×3, Holguín ×4)
-   - Alertas reales del sistema
-   - Gráficas conectadas a datos reales
-   - Dashboard lateral funcional
-   - Favicon NASA
+   NASOC – Main JS  |  v3.1
+   CORRECCIONES v3.1:
+   - Nodos La Habana movidos a tierra firme
+   - Cabo de San Antonio → Sandino/Pinar del Río (tierra)
+   - NUEVO: Punta de Maisí (extremo este Cuba)
+   - Enlace Maisí → Holguín agregado
 ════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -19,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.createElement('canvas');
     canvas.width = 64; canvas.height = 64;
     const ctx = canvas.getContext('2d');
-    // Fondo azul NASA
     ctx.beginPath();
     ctx.arc(32, 32, 30, 0, Math.PI * 2);
     ctx.fillStyle = '#0b3d91';
@@ -27,29 +23,24 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.strokeStyle = '#fc3d21';
     ctx.lineWidth = 3;
     ctx.stroke();
-    // Texto NASA
     ctx.fillStyle = 'white';
     ctx.font = 'bold 13px Arial Black';
     ctx.textAlign = 'center';
     ctx.fillText('NASA', 32, 26);
-    // Elipse orbital
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.ellipse(32, 38, 20, 8, 0, 0, Math.PI * 2);
     ctx.stroke();
-    // Línea roja
     ctx.strokeStyle = '#fc3d21';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(10, 38); ctx.lineTo(54, 38);
     ctx.stroke();
-    // Punto central
     ctx.beginPath();
     ctx.arc(32, 38, 3, 0, Math.PI * 2);
     ctx.fillStyle = 'white';
     ctx.fill();
-
     const link = document.createElement('link');
     link.rel = 'icon'; link.type = 'image/png';
     link.href = canvas.toDataURL();
@@ -82,7 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ══════════════════════════════════════════════
      2. ESTADO MONITOREO Y CONFIGURACIÓN
-     CRÍTICO: la barra de monitoreo NUNCA se oculta
   ══════════════════════════════════════════════ */
   let monitoringActive  = false;
   let pingFailCount     = 0;
@@ -102,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let prevRealPingMs    = null;
   const pingHistory     = [];
 
-  // MÉTRICAS REALES acumuladas
   const realMetrics = {
     packetLossHistory: [],
     latencyHistory:    [],
@@ -179,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.dismissInetAlert = function() { hideInetAlert(); };
 
-  /* ── Actualizar UI de ping ── */
   function updatePingUI(online, ms) {
     const dot    = document.getElementById('ping-dot');
     const msEl   = document.getElementById('ping-ms');
@@ -207,7 +195,6 @@ document.addEventListener('DOMContentLoaded', () => {
       prevRealPingMs = lastRealPingMs;
       lastRealPingMs = ms;
 
-      // Actualizar KPI latencia real
       const latEl = document.getElementById('kpi-latency');
       if (latEl) latEl.innerHTML = `${ms} <small>ms</small>`;
 
@@ -218,7 +205,6 @@ document.addEventListener('DOMContentLoaded', () => {
         trendEl.className   = `kpi-trend ${diff > 0 ? 'red' : 'green'}`;
       }
 
-      // Métricas acumuladas
       pingHistory.push(ms);
       if (pingHistory.length > 24) pingHistory.shift();
 
@@ -228,7 +214,6 @@ document.addEventListener('DOMContentLoaded', () => {
       realMetrics.maxLatency = Math.max(realMetrics.maxLatency, ms);
       realMetrics.avgLatency = pingHistory.reduce((a,b) => a+b, 0) / pingHistory.length;
 
-      // Actualizar KPI packet loss con datos reales
       const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
       const plEl = document.getElementById('kpi-loss');
       if (plEl) plEl.innerHTML = `${realPL.toFixed(3)}<small>%</small>`;
@@ -239,7 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
         plTrendEl.className = `kpi-trend ${realPL < 1 ? 'green' : 'red'}`;
       }
 
-      // Actualizar latency chart con dato real
       if (typeof latencyChart !== 'undefined' && latencyChart) {
         const data = latencyChart.data.datasets[0];
         if (data.data.length >= 30) data.data.shift();
@@ -253,21 +237,14 @@ document.addEventListener('DOMContentLoaded', () => {
         latencyChart.update('none');
       }
 
-      // Alerta si latencia alta
       if (ms > 200 && monitoringActive) {
         addRealAlert('HIGH', `Latencia elevada: ${ms}ms`, 'Google Relay — umbral 200ms superado', 'INET-MON');
       }
 
-      // Actualizar Google Relay KPI
-      const grEl = document.getElementById('kpi-google-relay');
-      if (grEl) {
-        grEl.innerHTML = `${ms} <small>ms</small>`;
-        grEl.className = `kpi-value ${ms < 80 ? '' : ms < 150 ? 'yellow' : 'red'}`;
-      }
+      updateSatelliteData(ms);
     }
   }
 
-  /* ── Ping real a Google ── */
   function doPing() {
     pingTotalCount++;
     realMetrics.totalPings++;
@@ -295,7 +272,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function handlePingResult(online, ms) {
     if (online) {
       if (!pingOnline) {
-        // Recuperó conexión
         const downDur = lastOkTime ? Math.round((Date.now() - new Date(lastOkTime.replace(' UTC','')).getTime()) / 1000) : 0;
         if (downDur > 5) addRealAlert('INFO', 'Conexión restaurada', `Downtime: ${downDur}s — Ping actual: ${ms}ms`, 'INET-MON');
       }
@@ -311,7 +287,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (dot)  dot.className = 'blink-dot green';
       if (text) { text.textContent = 'OPERATIONAL'; text.style.color = 'var(--accent-green)'; }
 
-      // Actualizar "Google Relay" en satélite
       updateSatelliteData(ms);
 
     } else {
@@ -330,14 +305,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* ── Iniciar / Detener monitoreo ── */
   function startMonitoring() {
     if (pingIntervalId) clearInterval(pingIntervalId);
     realMetrics.onlineSince = new Date().toISOString();
     doPing();
     pingIntervalId = setInterval(doPing, pingIntervalMs);
 
-    // UI — NUNCA se oculta la barra, solo cambia estado
     const bar  = document.getElementById('monitoringBar');
     const btn  = document.getElementById('monitorBtn');
     const txt  = document.getElementById('monitorBtnText');
@@ -358,7 +331,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pingIntervalId) { clearInterval(pingIntervalId); pingIntervalId = null; }
     hideInetAlert();
 
-    // UI — la barra SIGUE visible
     const bar  = document.getElementById('monitoringBar');
     const btn  = document.getElementById('monitorBtn');
     const txt  = document.getElementById('monitorBtnText');
@@ -440,7 +412,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!container) return;
     container.innerHTML = '';
 
-    // Ordenar: críticos primero
     const sorted = [...alertQueue].sort((a,b) => (alertLevelOrder[a.level]||5) - (alertLevelOrder[b.level]||5));
 
     sorted.slice(0, 5).forEach(al => {
@@ -456,12 +427,10 @@ document.addEventListener('DOMContentLoaded', () => {
       container.appendChild(item);
     });
 
-    // Si no hay alertas
     if (alertQueue.length === 0) {
       container.innerHTML = `<div style="padding:12px 10px;font-family:var(--font-mono);font-size:10px;color:var(--accent-green);text-align:center">✓ Sin alertas activas</div>`;
     }
 
-    // Actualizar contador en sidebar
     const alertNav = document.querySelector('[data-page="alerts"] .nav-label');
     if (alertNav) {
       const critCount = alertQueue.filter(a => a.level === 'CRITICAL').length;
@@ -469,7 +438,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* Tabla de eventos recientes */
   const eventsBuffer = [];
   function addEventRow(sev, event, source, details) {
     const now = new Date();
@@ -493,9 +461,8 @@ document.addEventListener('DOMContentLoaded', () => {
       </tr>`).join('');
   }
 
-  // Inicializar con eventos del sistema
-  addEventRow('INFO', 'Sistema iniciado', 'NASOC-v3', 'Dashboard cargado correctamente');
-  addEventRow('INFO', 'Mapa de nodos cargado', 'MAP-ENGINE', 'Cuba: 27 nodos activos');
+  addEventRow('INFO', 'Sistema iniciado', 'NASOC-v3.1', 'Dashboard cargado — nodos corregidos a tierra firme');
+  addEventRow('INFO', 'Mapa de nodos cargado', 'MAP-ENGINE', 'Cuba: 28 nodos activos (Maisí + correcciones)');
   addEventRow('MEDIUM', 'Esperando monitoreo activo', 'INET-MON', 'Presione ACTIVAR MONITOREO');
 
 
@@ -513,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     5. SYSTEM HEALTH DONUT — DINÁMICO
+     5. SYSTEM HEALTH DONUT
   ══════════════════════════════════════════════ */
   const healthChart = new Chart(document.getElementById('healthDonut'), {
     type: 'doughnut',
@@ -531,7 +498,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // El 92% es dinámico
   function updateHealthDonut(hNet, hSrv, hLnk, hSec) {
     const avg = Math.round((hNet + hSrv + hLnk + hSec) / 4);
     ['h-net','h-srv','h-lnk','h-sec'].forEach((id, i) => {
@@ -624,7 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     8. LATENCY CHART — se actualiza con pings reales
+     8. LATENCY CHART
   ══════════════════════════════════════════════ */
   const latencyHistoryInit = Array(18).fill(0).map(() => Math.round(20 + Math.random() * 30));
   const latencyChart = new Chart(document.getElementById('latencyChart'), {
@@ -659,7 +625,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Gradiente debajo del heatmap
   const lhPanel = document.querySelector('.latency-heatmap-panel');
   if (lhPanel) {
     const gradBar = document.createElement('div');
@@ -675,12 +640,11 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ══════════════════════════════════════════════
      9. PROTOCOL DISTRIBUTION DONUT
   ══════════════════════════════════════════════ */
-  const protoData = [58, 21, 8, 7, 6];
-  const protoChart = new Chart(document.getElementById('protocolDonut'), {
+  new Chart(document.getElementById('protocolDonut'), {
     type: 'doughnut',
     data: {
       datasets: [{
-        data: [...protoData],
+        data: [58, 21, 8, 7, 6],
         backgroundColor: ['#1a6fff','#22d3ee','#f59e0b','#10b981','#6366f1'],
         borderWidth: 1, borderColor: '#0a1120', hoverOffset: 3
       }]
@@ -694,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     10. PACKET LOSS CHART — datos reales calculados
+     10. PACKET LOSS CHART
   ══════════════════════════════════════════════ */
   const packetHistory = Array(9).fill(0);
   const packetChart = new Chart(document.getElementById('packetChart'), {
@@ -734,7 +698,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Actualizar packet loss chart con datos reales cada ping
   let packetSampleCnt = 0;
   function updatePacketLossChart() {
     packetSampleCnt++;
@@ -751,15 +714,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     11. LEAFLET MAP — NODOS CUBA COMPLETOS
-     - Camagüey: 3 nodos
-     - Florida (municipio Camagüey): 2 nodos
-     - Ciego de Ávila: 4 nodos
-     - Santa Clara: 3 nodos
-     - La Habana: 8 nodos
-     - Las Tunas: 3 nodos
-     - Holguín: 4 nodos
-     Total Cuba: 27 nodos
+     11. LEAFLET MAP — v3.1
+     CORRECCIONES:
+     - HAB-SAT, HAB-DIST1: movidos a tierra firme (Playa interior)
+     - HAB-CABO → SANDINO relay (Pinar del Río, tierra firme)
+     - NUEVO: MAI-1 Punta de Maisí (extremo este Cuba)
+     - Nodos Cuba: 28 total
   ══════════════════════════════════════════════ */
   const map = L.map('worldMap', {
     center: [22.0, -79.5],
@@ -776,15 +736,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }).addTo(map);
 
   const nodes = [
-    // ── LA HABANA (8 nodos) ──
-    { id: 'HAB-NOC',   name: 'LA HABANA — NOC PRINCIPAL\nNodo Central Nacional',       lat: 23.136, lng: -82.358, type: 'gateway',   region: 'habana' },
-    { id: 'HAB-GW1',   name: 'LA HABANA — GATEWAY NORTE\nVedado Data Center',           lat: 23.148, lng: -82.390, type: 'data',      region: 'habana' },
-    { id: 'HAB-GW2',   name: 'LA HABANA — RELAY ESTE\nGuanabacoa Link Node',            lat: 23.121, lng: -82.290, type: 'data',      region: 'habana' },
-    { id: 'HAB-SAT',   name: 'LA HABANA — SAT UPLINK\nEstación Terrena Principal',      lat: 23.160, lng: -82.425, type: 'satellite', region: 'habana' },
-    { id: 'HAB-FW',    name: 'LA HABANA — FIREWALL NODE\nSeguridad Perimetral',         lat: 23.108, lng: -82.340, type: 'ground',    region: 'habana' },
-    { id: 'HAB-DIST1', name: 'LA HABANA — DISTRIBUCIÓN OESTE\nPlaya Hub',              lat: 23.142, lng: -82.450, type: 'ground',    region: 'habana' },
-    { id: 'HAB-DIST2', name: 'LA HABANA — DISTRIBUCIÓN SUR\nCerro/10 Octubre Hub',     lat: 23.088, lng: -82.358, type: 'data',      region: 'habana' },
-    { id: 'HAB-CABO',  name: 'CABO DE SAN ANTONIO — UPLINK SAT\nExtensión Habana W',   lat: 21.870, lng: -84.960, type: 'satellite', region: 'habana' },
+    // ── LA HABANA (8 nodos) — TODOS EN TIERRA ──
+    // HAB-NOC: Centro Habana / Cerro — tierra firme confirmado
+    { id: 'HAB-NOC',   name: 'LA HABANA — NOC PRINCIPAL\nNodo Central Nacional',       lat: 23.132, lng: -82.365, type: 'gateway',   region: 'habana' },
+    // HAB-GW1: Vedado — tierra firme confirmado
+    { id: 'HAB-GW1',   name: 'LA HABANA — GATEWAY NORTE\nVedado Data Center',           lat: 23.138, lng: -82.383, type: 'data',      region: 'habana' },
+    // HAB-GW2: Guanabacoa — tierra firme, al este
+    { id: 'HAB-GW2',   name: 'LA HABANA — RELAY ESTE\nGuanabacoa Link Node',            lat: 23.118, lng: -82.295, type: 'data',      region: 'habana' },
+    // HAB-SAT: Playa/Miramar interior — CORREGIDO más al sur (23.127 vs 23.160)
+    { id: 'HAB-SAT',   name: 'LA HABANA — SAT UPLINK\nEstación Terrena Principal',      lat: 23.127, lng: -82.418, type: 'satellite', region: 'habana' },
+    // HAB-FW: Cerro — tierra firme
+    { id: 'HAB-FW',    name: 'LA HABANA — FIREWALL NODE\nSeguridad Perimetral',         lat: 23.096, lng: -82.376, type: 'ground',    region: 'habana' },
+    // HAB-DIST1: Marianao interior — CORREGIDO (23.082 vs 23.142, más al sur = tierra)
+    { id: 'HAB-DIST1', name: 'LA HABANA — DISTRIBUCIÓN OESTE\nMarianao Hub',            lat: 23.082, lng: -82.433, type: 'ground',    region: 'habana' },
+    // HAB-DIST2: 10 de Octubre — tierra firme
+    { id: 'HAB-DIST2', name: 'LA HABANA — DISTRIBUCIÓN SUR\n10 de Octubre Hub',         lat: 23.087, lng: -82.340, type: 'data',      region: 'habana' },
+    // CORREGIDO: Cabo de San Antonio era agua → Sandino, Pinar del Río (tierra firme)
+    { id: 'HAB-CABO',  name: 'SANDINO — RELAY PINAR DEL RÍO\nGateway Occidente',       lat: 22.540, lng: -84.090, type: 'satellite', region: 'habana' },
 
     // ── CAMAGÜEY (3 nodos) ──
     { id: 'CAM-1',     name: 'CAMAGÜEY — NODO PRINCIPAL\nCentro Ciudad',               lat: 21.383, lng: -77.920, type: 'gateway',   region: 'camaguey' },
@@ -816,6 +784,9 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'HOL-2',     name: 'HOLGUÍN — SAT UPLINK\nEstación Satelital Este',          lat: 20.910, lng: -76.130, type: 'satellite', region: 'holguin' },
     { id: 'HOL-3',     name: 'HOLGUÍN — RELAY SUR\nBayamo Corridor',                   lat: 20.680, lng: -76.380, type: 'data',      region: 'holguin' },
     { id: 'HOL-4',     name: 'HOLGUÍN — NORTE COASTAL\nGibara Coastal Node',           lat: 21.107, lng: -76.133, type: 'ground',    region: 'holguin' },
+
+    // ── PUNTA DE MAISÍ — NUEVO (extremo este de Cuba) ──
+    { id: 'MAI-1',     name: 'PUNTA DE MAISÍ — SAT UPLINK ESTE\nExtremo Oriental Cuba', lat: 20.248, lng: -74.147, type: 'satellite', region: 'holguin' },
 
     // ── Nodos internacionales / NASA ──
     { id: 'MIAMI',     name: 'MIAMI — SATELLITE UPLINK\nFlorida USA',                  lat: 25.770, lng: -80.190, type: 'satellite', region: 'ext' },
@@ -867,7 +838,6 @@ document.addEventListener('DOMContentLoaded', () => {
       );
   });
 
-  // Conexiones entre todos los nodos cubanos
   const links = [
     // ── La Habana interna ──
     ['HAB-NOC',  'HAB-GW1',   '#9b59ff'],
@@ -919,10 +889,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ['HOL-1',    'HOL-3',     '#9b59ff'],
     ['HOL-1',    'HOL-4',     '#9b59ff'],
     ['HOL-2',    'HOL-4',     '#00c8ff'],
+    // ── Maisí ──
+    ['MAI-1',    'HOL-2',     '#ffc400'],
+    ['MAI-1',    'HOL-4',     '#00c8ff'],
     // ── Cuba → exterior ──
     ['HAB-SAT',  'MIAMI',     '#1a6fff'],
     ['HAB-CABO', 'MIAMI',     '#ffc400'],
     ['CIA-4',    'MIAMI',     '#ffc400'],
+    ['MAI-1',    'BOGOTA',    '#ffc400'],
     ['HOL-2',    'BOGOTA',    '#00e676'],
     // ── Exterior / NASA ──
     ['MIAMI',    'KSC',       '#1a6fff'],
@@ -954,13 +928,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Botón "Next Map" — cicla entre vistas
+  // Vistas de mapa — incluye Maisí
   const mapViews = [
-    { center: [22.0, -79.5], zoom: 6,  label: 'CUBA COMPLETA' },
+    { center: [22.0, -79.5],  zoom: 6,  label: 'CUBA COMPLETA' },
     { center: [23.13, -82.35], zoom: 10, label: 'LA HABANA' },
     { center: [21.38, -77.92], zoom: 9,  label: 'CAMAGÜEY/FLORIDA' },
-    { center: [21.0, -76.5],   zoom: 9,  label: 'LAS TUNAS / HOLGUÍN' },
-    { center: [22.0, -79.5],   zoom: 4,  label: 'REGIÓN CARIBE' },
+    { center: [21.0,  -76.5],  zoom: 9,  label: 'LAS TUNAS / HOLGUÍN' },
+    { center: [20.25, -74.15], zoom: 11, label: 'PUNTA DE MAISÍ' },
+    { center: [22.0,  -79.5],  zoom: 4,  label: 'REGIÓN CARIBE' },
   ];
   let mapViewIdx = 0;
   window.nextMapView = function() {
@@ -972,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     12. SATELLITE VISUALIZATION + DATOS REALES
+     12. SATELLITE VISUALIZATION
   ══════════════════════════════════════════════ */
   const satSvg = `
 <svg viewBox="0 0 240 220" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
@@ -997,12 +972,10 @@ document.addEventListener('DOMContentLoaded', () => {
   <path d="M82 102 Q93 97 100 105 Q95 115 84 112Z" fill="#0f3a6a" opacity="0.7"/>
   <path d="M130 100 Q142 95 150 103 Q145 114 133 112Z" fill="#0f3a6a" opacity="0.65"/>
   <path d="M100 116 Q108 112 114 118 Q110 126 102 124Z" fill="#0f3a6a" opacity="0.5"/>
-  <!-- Cuba marker -->
   <circle cx="108" cy="108" r="3" fill="#ffc400" opacity="0.9" filter="url(#glow)"/>
   <line x1="68" y1="110" x2="172" y2="110" stroke="#1a6fff" stroke-width="0.5" opacity="0.4" stroke-dasharray="2 3"/>
   <ellipse cx="120" cy="110" rx="82" ry="24" fill="none" stroke="#1a6fff" stroke-width="0.7" stroke-dasharray="4 5" opacity="0.4"/>
   <ellipse cx="120" cy="110" rx="75" ry="40" fill="none" stroke="#9b59ff" stroke-width="0.5" stroke-dasharray="3 6" opacity="0.25" transform="rotate(-30 120 110)"/>
-  <!-- TDRS-1 -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 16s linear infinite;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#00c8ff" opacity="0.95" filter="url(#glow)"/>
@@ -1011,7 +984,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.9"/>
     </g>
   </g>
-  <!-- TDRS-2 -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 16s linear infinite; animation-delay:-5.33s;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#00c8ff" opacity="0.9" filter="url(#glow)"/>
@@ -1020,7 +992,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.85"/>
     </g>
   </g>
-  <!-- TDRS-3 -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 16s linear infinite; animation-delay:-10.67s;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#00c8ff" opacity="0.88" filter="url(#glow)"/>
@@ -1029,7 +1000,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.8"/>
     </g>
   </g>
-  <!-- TDRS-5 maintenance -->
   <g style="transform-origin:120px 110px; animation: spin-orbit 44s linear infinite reverse;">
     <g transform="translate(202,110)">
       <rect x="-8" y="-3" width="16" height="6" rx="1.5" fill="#ffc400" opacity="0.9" filter="url(#glow)"/>
@@ -1038,7 +1008,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <circle cx="0" cy="0" r="2.5" fill="#fff" opacity="0.75"/>
     </g>
   </g>
-  <!-- Telemetría satélite — datos reales -->
   <text x="10" y="200" font-family="Share Tech Mono" font-size="7" fill="#3a5880">PING:</text>
   <text id="sat-ping-text" x="35" y="200" font-family="Share Tech Mono" font-size="7" fill="#00c8ff">-- ms</text>
   <text x="90" y="200" font-family="Share Tech Mono" font-size="7" fill="#3a5880">LOSS:</text>
@@ -1072,20 +1041,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ══════════════════════════════════════════════
-     13. SIMULACIÓN DE FONDO + DATOS REALES (cada 3s)
-     Los KPIs que no dependen del ping real usan
-     variación dinámica con base en estado real
+     13. SIMULACIÓN DE FONDO + DATOS REALES
   ══════════════════════════════════════════════ */
   function rnd(base, range) {
     return +(base + (Math.random() - 0.5) * range).toFixed(3);
   }
 
-  // Escalado real de tráfico basado en nodos activos Cuba
   let baseTraffic = 2.841;
-  let nodesActive = 27;
+  let nodesActive = 28; // +1 Maisí
 
   setInterval(() => {
-    // Ajustar base de tráfico si monitoreo activo
     if (monitoringActive) {
       baseTraffic = Math.max(1.5, Math.min(3.2, baseTraffic + (Math.random() - 0.48) * 0.08));
     }
@@ -1093,22 +1058,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const tr = rnd(baseTraffic, 0.12);
     const cn = Math.round(rnd(12641, 150));
 
-    // Traffic KPI
     const trEl = document.getElementById('kpi-traffic');
     if (trEl) trEl.innerHTML = tr.toFixed(3) + ' <small>Tbps</small>';
 
-    // Connections KPI
     const cnEl = document.getElementById('kpi-conn');
     if (cnEl) cnEl.textContent = cn.toLocaleString();
 
-    // Total Nodes — 27 Cuba + externos
     const totalNodes = nodesActive + 8;
     const ndEl = document.getElementById('kpi-nodes');
     if (ndEl) ndEl.textContent = totalNodes.toLocaleString();
     const ndTrendEl = document.getElementById('kpi-nodes-trend');
     if (ndTrendEl) { ndTrendEl.textContent = `${nodesActive} nodos Cuba activos`; ndTrendEl.className = 'kpi-trend green'; }
 
-    // Push traffic chart
     if (trafficChart.data.datasets[0].data.length >= 30) {
       trafficChart.data.datasets[0].data.shift();
       trafficChart.data.labels.shift();
@@ -1118,10 +1079,8 @@ document.addEventListener('DOMContentLoaded', () => {
     trafficChart.data.labels.push(`${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`);
     trafficChart.update('none');
 
-    // Packet loss chart (datos reales del ping)
     updatePacketLossChart();
 
-    // Health dinámico basado en estado real
     const baseHealth = monitoringActive && pingOnline ? 92 : 75;
     const penaltyFail = Math.min(30, pingFailCount * 5);
     const hNet = Math.max(50, Math.round(rnd(baseHealth - penaltyFail, 3)));
@@ -1130,7 +1089,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hSec = Math.max(50, Math.round(rnd(91, 2)));
     updateHealthDonut(hNet, hSrv, hLnk, hSec);
 
-    // Link latencies dinámicas
     const linkVals = [
       { id: 'll-1', base: 18, range: 5  },
       { id: 'll-2', base: 47, range: 12 },
@@ -1147,20 +1105,18 @@ document.addEventListener('DOMContentLoaded', () => {
       el.className   = 'link-lat ' + (v < 35 ? 'green' : v < 60 ? 'yellow' : 'red');
     });
 
-    // Alertas automáticas basadas en datos reales
     const realPL = (realMetrics.failedPings / Math.max(1, realMetrics.totalPings) * 100);
     if (monitoringActive && realPL > 5 && Math.random() < 0.15) {
       addRealAlert('HIGH', `Packet Loss elevado: ${realPL.toFixed(2)}%`, `${realMetrics.failedPings} fallos / ${realMetrics.totalPings} pings`, 'INET-MON');
     }
 
-    // Actualizar satellite panel
     updateSatelliteData(lastRealPingMs);
 
   }, 3000);
 
 
   /* ══════════════════════════════════════════════
-     14. SIDEBAR NAV — TOTALMENTE FUNCIONAL
+     14. SIDEBAR NAV
   ══════════════════════════════════════════════ */
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -1175,14 +1131,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleNavPage(page) {
     const content = document.querySelector('.content');
     if (!content) return;
-
-    // Resaltar breve efecto de transición
     content.style.opacity = '0.7';
     setTimeout(() => { content.style.opacity = '1'; }, 200);
 
     switch(page) {
       case 'network':
-        // Hacer zoom al mapa
         map.flyTo([22.0, -79.5], 6, { duration: 1.0 });
         addRealAlert('INFO', 'Vista: NET MAP', 'NAV', 'Mapa de red activo — Cuba completa');
         break;
@@ -1216,7 +1169,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* ── Modal de páginas ── */
   function showPageModal(title, html) {
     const existing = document.getElementById('page-modal');
     if (existing) existing.remove();
@@ -1264,7 +1216,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cubaNodes = nodes.filter(n => cubaRegions.has(n.region));
     const byRegion = {};
     cubaNodes.forEach(n => { if (!byRegion[n.region]) byRegion[n.region] = []; byRegion[n.region].push(n); });
-    const regionNames = { habana:'LA HABANA', camaguey:'CAMAGÜEY + FLORIDA', ciego:'CIEGO DE ÁVILA', santa_clara:'SANTA CLARA', las_tunas:'LAS TUNAS', holguin:'HOLGUÍN' };
+    const regionNames = { habana:'LA HABANA', camaguey:'CAMAGÜEY + FLORIDA', ciego:'CIEGO DE ÁVILA', santa_clara:'SANTA CLARA', las_tunas:'LAS TUNAS', holguin:'HOLGUÍN (+ MAISÍ)' };
     let html = `<div style="${monoStyle} margin-bottom:12px;">Total nodos Cuba: <span style="color:#00e676;font-size:14px;font-weight:700">${cubaNodes.length}</span></div>`;
     Object.entries(byRegion).forEach(([reg, nds]) => {
       html += `<div style="margin-bottom:10px;">
@@ -1351,7 +1303,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>`).join('')}
       </div>
       <div style="${monoStyle} margin-top:8px">
-        Nodos Cuba monitoreados: ${nodesActive} | Conexiones activas: ${links.filter(l => cubaRegions.has((nodes.find(n=>n.id===l[0])||{}).region)).length} enlaces internos
+        Nodos Cuba monitoreados: ${nodesActive} (incl. Punta de Maisí) | Conexiones activas: ${links.filter(l => cubaRegions.has((nodes.find(n=>n.id===l[0])||{}).region)).length} enlaces internos
       </div>`;
   }
 
@@ -1398,7 +1350,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ['Umbral Alarma', `${failThreshold} fallos consecutivos`],
         ['Volumen Alarma', `${Math.round(alarmVolume*100)}%`],
         ['Monitoreo', monitoringActive ? 'ACTIVO' : 'INACTIVO'],
-        ['Nodos Cuba', `${nodesActive} nodos activos`],
+        ['Nodos Cuba', `${nodesActive} nodos activos (incl. Punta de Maisí)`],
         ['Pings Realizados', realMetrics.totalPings],
         ['Fallos Detectados', realMetrics.failedPings],
         ['Alertas Generadas', alertQueue.length],
@@ -1426,9 +1378,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  /* ══ Inicializar alertas container ══ */
   renderAlerts();
   renderEventsTable();
 
-  console.log('%cNASOC v3.0 — Sistema cargado. 27 nodos Cuba activos. Presiona "ACTIVAR MONITOREO DE RED".', 'color:#00e676;font-family:monospace;font-size:13px');
+  console.log('%cNASOC v3.1 — 28 nodos Cuba. Maisí agregado. Habana en tierra firme. Sandino relay OK.', 'color:#00e676;font-family:monospace;font-size:13px');
 });
