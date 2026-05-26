@@ -72,8 +72,9 @@
       <span class="meta-label">CURRENT USER</span>
       <span class="meta-value mono">NSOC_ADMIN</span>
     </div>
-    <div class="header-avatar">
-      <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="15" stroke="#2a5298" stroke-width="1.5"/><circle cx="16" cy="13" r="5" fill="#2a5298"/><path d="M6 26c0-5.5 4.5-9 10-9s10 3.5 10 9" stroke="#2a5298" stroke-width="1.5" fill="none"/></svg>
+    <!-- HACKER EMOJI reemplaza el SVG de perfil -->
+    <div class="header-avatar" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--border-bright);border-radius:50%;font-size:18px;line-height:1;background:rgba(26,111,255,0.08);cursor:default;" title="NSOC_ADMIN">
+      🕵️
     </div>
   </div>
 </header>
@@ -224,7 +225,7 @@
         <div class="kpi-trend green" id="kpi-latency-trend">Midiendo...</div>
       </div>
 
-      <!-- 6. Threat Level — id="kpi-threat" para que el JS lo encuentre -->
+      <!-- 6. Threat Level -->
       <div class="kpi-card animate-in" id="kpi-threat" style="--delay:0.3s">
         <div class="kpi-label">THREAT LEVEL</div>
         <div class="kpi-value yellow" id="kpi-threat-value">CALCULANDO</div>
@@ -374,21 +375,13 @@
         </div>
       </div>
 
-      <!-- Satellite Links — diseño corregido con telemetría bien separada -->
+      <!-- Satellite Links -->
       <div class="panel satellite-panel">
         <div class="panel-header">
           <span class="panel-title">✦ SATELLITE LINKS</span>
           <span style="font-family:var(--font-mono);font-size:9px;color:var(--accent-cyan)" id="sat-header-status">INICIALIZANDO...</span>
         </div>
 
-        <!--
-          CORRECCIÓN DISEÑO SATÉLITE:
-          El SVG del globo ocupa la zona superior.
-          La telemetría (números) está en una banda
-          separada debajo, con padding adecuado y
-          fondo propio, bien distanciada del globo.
-          Ya NO están "pegados" al SVG.
-        -->
         <div class="satellite-inner" style="flex-direction:column;padding:10px 14px 8px;gap:0;height:calc(100% - 36px)">
 
           <!-- Zona superior: globo + lista -->
@@ -404,7 +397,7 @@
             </ul>
           </div>
 
-          <!-- Zona inferior: telemetría numérica — SEPARADA con margen y fondo propio -->
+          <!-- Zona inferior: telemetría numérica -->
           <div id="sat-telemetry-bar" style="
             margin-top:10px;
             padding:8px 10px;
